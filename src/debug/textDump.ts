@@ -57,7 +57,26 @@ export function textDump(state: SimState): string {
   }
 
   lines.push('bots:')
-  lines.push('  (none)')
+  const botIds = Object.keys(state.botRuntimes)
+    .map(Number)
+    .sort((a, b) => a - b)
+  if (botIds.length === 0) {
+    lines.push('  (none)')
+  } else {
+    botIds.forEach((id, index) => {
+      const runtime = state.botRuntimes[id]
+      if (runtime === undefined) {
+        return
+      }
+      const program = state.programs[runtime.programId]
+      const programName = program === undefined ? runtime.programId : program.name
+      const path = runtime.frames.map((frame) => frame.index).join('.')
+      const blockedReason = runtime.blockedReason === undefined ? '' : ` blockedReason=${runtime.blockedReason}`
+      lines.push(
+        `  ${index + 1}. bot=${id} program=${programName} path=${path} status=${runtime.status}${blockedReason}`,
+      )
+    })
+  }
 
   return lines.join('\n')
 }

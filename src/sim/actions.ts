@@ -26,7 +26,8 @@ function fail(reason: string): ActionResult {
   return { ok: false, reason }
 }
 
-function isBusy(state: SimState, actor: Entity): boolean {
+/** Whether an actor is still mid-action: walking, or waiting out a busyUntilTick cooldown. */
+export function isActorBusy(state: SimState, actor: Entity): boolean {
   return actor.moveTarget !== null || actor.path.length > 0 || state.tick < actor.busyUntilTick
 }
 
@@ -183,13 +184,17 @@ function build(state: SimState, actor: Entity, kind: BuildableType, target: Tile
   return { ok: true, producedEntityId }
 }
 
-/** The only function that mutates the world. Every action a player or bot takes flows through here. */
+/**
+ * The only function that mutates the world. Every action a player or bot takes flows through here.
+ * (vm.ts writes directly to a bot's own entry in `SimState.botRuntimes` — that's VM-internal program
+ * counter/call-stack bookkeeping, not world state, so it's exempt from this rule.)
+ */
 export function executeAction(state: SimState, actorId: EntityId, request: ActionRequest): ActionResult {
   const actor = getEntity(state, actorId)
   if (actor === undefined) {
     return fail('unknown actor')
   }
-  if (isBusy(state, actor)) {
+  if (isActorBusy(state, actor)) {
     return fail('actor is busy')
   }
 
