@@ -1,5 +1,7 @@
-import type { Entity, SimState, TileType } from './types'
+import type { Entity, EntityId, SimState, TileRef, TileType } from './types'
 import { createRng } from './rng'
+import type { Program } from './program'
+import type { BotRuntime } from './vm'
 
 export const SAVE_VERSION = 1
 
@@ -13,6 +15,11 @@ interface SaveDataV1 {
   tick: number
   seed: number
   rngState: number
+  /** Optional so older save fixtures without these fields still load, defaulting to empty. */
+  areas?: Record<string, TileRef[]>
+  markers?: Record<string, TileRef>
+  programs?: Record<string, Program>
+  botRuntimes?: Record<EntityId, BotRuntime>
 }
 
 export function save(state: SimState): string {
@@ -26,6 +33,10 @@ export function save(state: SimState): string {
     tick: state.tick,
     seed: state.seed,
     rngState: state.rng.state,
+    areas: state.areas,
+    markers: state.markers,
+    programs: state.programs,
+    botRuntimes: state.botRuntimes,
   }
   return JSON.stringify(data)
 }
@@ -56,5 +67,9 @@ export function load(json: string): SimState {
     tick: data.tick,
     seed: data.seed,
     rng: createRng(data.rngState),
+    areas: data.areas ?? {},
+    markers: data.markers ?? {},
+    programs: data.programs ?? {},
+    botRuntimes: data.botRuntimes ?? {},
   }
 }

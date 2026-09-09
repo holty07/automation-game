@@ -1,4 +1,6 @@
 import type { Rng } from './rng'
+import type { Program } from './program'
+import type { BotRuntime } from './vm'
 
 export type TileType = 'grass' | 'dirt' | 'stone' | 'water'
 
@@ -42,4 +44,12 @@ export interface SimState {
   tick: number
   seed: number
   rng: Rng
+  /** Player-painted zones, keyed by area id, used by the `inArea` target binding. */
+  areas: Record<string, TileRef[]>
+  /** Player-stamped named locations, keyed by marker id, used by the `marker` target binding. */
+  markers: Record<string, TileRef>
+  /** The program library, keyed by program id. */
+  programs: Record<string, Program>
+  /** Bot VM state, keyed by the bot entity's id. */
+  botRuntimes: Record<EntityId, BotRuntime>
 }

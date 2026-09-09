@@ -1,7 +1,7 @@
 import type { Entity, EntityId, ItemKind, SimState, TileRef, TileType } from './types'
 import { createRng } from './rng'
 import { MOVE_TICKS_PER_TILE } from './movement'
-import { createGroundItem, createRock, createTree } from './entities'
+import { createGroundItem, createRock, createTree, staticEntity } from './entities'
 import { createBenchSaw, createStockpile } from './machines'
 
 const DEFAULT_TILE: TileType = 'grass'
@@ -19,6 +19,10 @@ export function createWorld(width: number, height: number, seed: number): SimSta
     tick: 0,
     seed,
     rng: createRng(seed),
+    areas: {},
+    markers: {},
+    programs: {},
+    botRuntimes: {},
   }
 }
 
@@ -93,6 +97,10 @@ export function addStockpile(state: SimState, x: number, y: number): EntityId {
 
 export function addBenchSaw(state: SimState, x: number, y: number): EntityId {
   return addEntity(state, createBenchSaw({ x, y }))
+}
+
+export function addBot(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, staticEntity('bot', { x, y }))
 }
 
 export function inBounds(state: SimState, tile: TileRef): boolean {
