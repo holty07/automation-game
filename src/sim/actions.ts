@@ -1,13 +1,20 @@
-import { createGroundItem, getActionCost, RESOURCE_YIELD } from './entities'
+import { createGroundItem, getActionCost, isItemKind, RESOURCE_YIELD } from './entities'
+import { BENCH_SAW_RECIPE, createBenchSaw, createStockpile } from './machines'
 import type { Entity, EntityId, ItemKind, SimState, TileRef } from './types'
-import { addEntity, getEntity, inBounds, isWalkable, removeEntity } from './world'
+import { addEntity, entitiesAt, getEntity, inBounds, isWalkable, removeEntity } from './world'
 import { findPath, isAdjacent } from './pathfind'
+
+/** Buildings the player can place on an empty tile. */
+export type BuildableType = 'stockpile' | 'benchSaw'
 
 export type ActionRequest =
   | { op: 'MOVE_TO'; target: TileRef }
   | { op: 'PICK_UP'; target: EntityId }
   | { op: 'DROP'; target: TileRef }
   | { op: 'USE'; target: EntityId }
+  | { op: 'GIVE_TO'; target: EntityId }
+  | { op: 'TAKE_FROM'; target: EntityId; item: ItemKind }
+  | { op: 'BUILD'; kind: BuildableType; target: TileRef }
 
 export interface ActionResult {
   ok: boolean
@@ -45,7 +52,7 @@ function beginMove(state: SimState, actor: Entity, target: TileRef): ActionResul
 
 function pickUp(state: SimState, actor: Entity, targetId: EntityId): ActionResult {
   const target = getEntity(state, targetId)
-  if (target === undefined || (target.type !== 'log' && target.type !== 'stone')) {
+  if (target === undefined || !isItemKind(target.type)) {
     return fail('nothing to pick up there')
   }
   if (actor.held !== null) {
@@ -100,6 +107,82 @@ function use(state: SimState, actor: Entity, targetId: EntityId): ActionResult {
   return { ok: true, producedEntityId }
 }
 
+function giveTo(state: SimState, actor: Entity, targetId: EntityId): ActionResult {
+  const target = getEntity(state, targetId)
+  if (target === undefined || target.storage === null) {
+    return fail('nothing to give to there')
+  }
+  if (actor.held === null) {
+    return fail('not holding anything')
+  }
+  if (!isAdjacent(actor.pos, target.pos)) {
+    return fail('target is out of reach')
+  }
+
+  const heldKind = actor.held
+
+  if (target.type === 'benchSaw') {
+    if (heldKind !== BENCH_SAW_RECIPE.input) {
+      return fail('the bench saw cannot use that')
+    }
+    if (target.craftingUntilTick !== null) {
+      return fail('the bench saw is busy')
+    }
+    const cost = getActionCost('GIVE_TO', heldKind)
+    actor.held = null
+    actor.busyUntilTick = state.tick + cost
+    target.craftingUntilTick = state.tick + BENCH_SAW_RECIPE.ticks
+    return { ok: true }
+  }
+
+  const cost = getActionCost('GIVE_TO', heldKind)
+  target.storage[heldKind] = (target.storage[heldKind] ?? 0) + 1
+  actor.held = null
+  actor.busyUntilTick = state.tick + cost
+  return { ok: true }
+}
+
+function takeFrom(state: SimState, actor: Entity, targetId: EntityId, item: ItemKind): ActionResult {
+  const target = getEntity(state, targetId)
+  if (target === undefined || target.storage === null) {
+    return fail('nothing to take from there')
+  }
+  if (actor.held !== null) {
+    return fail('hands are full')
+  }
+  if (!isAdjacent(actor.pos, target.pos)) {
+    return fail('target is out of reach')
+  }
+  const available = target.storage[item] ?? 0
+  if (available <= 0) {
+    return fail('nothing of that kind to take')
+  }
+
+  const cost = getActionCost('TAKE_FROM', item)
+  target.storage[item] = available - 1
+  actor.held = item
+  actor.busyUntilTick = state.tick + cost
+  return { ok: true }
+}
+
+function build(state: SimState, actor: Entity, kind: BuildableType, target: TileRef): ActionResult {
+  if (!inBounds(state, target)) {
+    return fail('target is out of bounds')
+  }
+  if (!isAdjacent(actor.pos, target)) {
+    return fail('target is out of reach')
+  }
+  if (entitiesAt(state, target.x, target.y).length > 0) {
+    return fail('target is occupied')
+  }
+
+  const cost = getActionCost('BUILD', kind)
+  const entityData = kind === 'stockpile' ? createStockpile(target) : createBenchSaw(target)
+  const producedEntityId = addEntity(state, entityData)
+  actor.busyUntilTick = state.tick + cost
+  return { ok: true, producedEntityId }
+}
+
 /** The only function that mutates the world. Every action a player or bot takes flows through here. */
 export function executeAction(state: SimState, actorId: EntityId, request: ActionRequest): ActionResult {
   const actor = getEntity(state, actorId)
@@ -119,5 +202,11 @@ export function executeAction(state: SimState, actorId: EntityId, request: Actio
       return drop(state, actor, request.target)
     case 'USE':
       return use(state, actor, request.target)
+    case 'GIVE_TO':
+      return giveTo(state, actor, request.target)
+    case 'TAKE_FROM':
+      return takeFrom(state, actor, request.target, request.item)
+    case 'BUILD':
+      return build(state, actor, request.kind, request.target)
   }
 }

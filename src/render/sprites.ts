@@ -14,6 +14,9 @@ const ENTITY_COLOURS: Record<EntityType, string> = {
   rock: '#6e6e6e',
   log: '#8a5a2b',
   stone: '#a8a8a8',
+  plank: '#c9a06a',
+  stockpile: '#5b4636',
+  benchSaw: '#7a5230',
 }
 
 export function drawTile(ctx: CanvasRenderingContext2D, tile: TileType, x: number, y: number, size: number): void {

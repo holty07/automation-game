@@ -4,6 +4,7 @@ import { textDump } from './debug/textDump'
 import { createCamera } from './render/camera'
 import { render } from './render/canvas'
 import { createControls } from './input/controls'
+import { createToolbar } from './ui/Toolbar'
 
 const WORLD_SIZE = 64
 const TILE_SIZE = 32
@@ -39,10 +40,17 @@ if (ctx === null) {
   throw new Error('Canvas 2D context is unavailable.')
 }
 
+const ui = document.getElementById('ui')
+if (!(ui instanceof HTMLElement)) {
+  throw new Error('Missing #ui element.')
+}
+
 const camera = createCamera(TILE_SIZE, canvas.width, canvas.height)
-const controls = createControls(canvas, state, camera, playerId)
+const toolbar = createToolbar(ui, state, playerId)
+const controls = createControls(canvas, state, camera, playerId, toolbar)
 
 createLoop(state, (currentState, alpha) => {
   controls.update()
+  toolbar.update()
   render(ctx, currentState, camera, playerId, alpha)
 })

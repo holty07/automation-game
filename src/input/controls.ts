@@ -1,10 +1,12 @@
-import type { EntityId, SimState, TileRef } from '../sim/types'
+import type { EntityId, ItemKind, SimState, TileRef } from '../sim/types'
 import type { ActionRequest } from '../sim/actions'
 import { executeAction } from '../sim/actions'
+import { isItemKind, ITEM_KINDS } from '../sim/entities'
 import { findPathAdjacentTo } from '../sim/pathfind'
 import { entitiesAt, getEntity, inBounds } from '../sim/world'
 import type { Camera } from '../render/camera'
 import { screenToTile } from '../render/camera'
+import type { Toolbar } from '../ui/Toolbar'
 
 interface Direction {
   dx: number
@@ -29,11 +31,20 @@ export interface Controls {
   destroy(): void
 }
 
+/** The first item kind found in a container's store, in a fixed, deterministic order. */
+function firstAvailableItemKind(entity: { storage: Partial<Record<ItemKind, number>> | null }): ItemKind | null {
+  if (entity.storage === null) {
+    return null
+  }
+  return ITEM_KINDS.find((kind) => (entity.storage?.[kind] ?? 0) > 0) ?? null
+}
+
 export function createControls(
   canvas: HTMLCanvasElement,
   state: SimState,
   camera: Camera,
   playerId: EntityId,
+  toolbar: Toolbar,
 ): Controls {
   const pressed = new Set<string>()
   /** An action queued to fire once the player finishes walking to it (a click on a distant target). */
@@ -83,6 +94,44 @@ export function createControls(
       return
     }
 
+    const pendingBuild = toolbar.takePendingBuild()
+    if (pendingBuild !== null) {
+      const path = findPathAdjacentTo(state, player.pos, tile)
+      if (path === null) {
+        return
+      }
+      const destination = path.length === 0 ? player.pos : path[path.length - 1]
+      if (destination === undefined) {
+        return
+      }
+      approach(destination, { op: 'BUILD', kind: pendingBuild, target: tile })
+      return
+    }
+
+    const container = entitiesAt(state, tile.x, tile.y).find(
+      (entity) => entity.type === 'stockpile' || entity.type === 'benchSaw',
+    )
+    if (container !== undefined) {
+      const path = findPathAdjacentTo(state, player.pos, container.pos)
+      if (path === null) {
+        return
+      }
+      const destination = path.length === 0 ? player.pos : path[path.length - 1]
+      if (destination === undefined) {
+        return
+      }
+      if (player.held !== null) {
+        approach(destination, { op: 'GIVE_TO', target: container.id })
+        return
+      }
+      const kind = firstAvailableItemKind(container)
+      if (kind === null) {
+        return
+      }
+      approach(destination, { op: 'TAKE_FROM', target: container.id, item: kind })
+      return
+    }
+
     const resource = entitiesAt(state, tile.x, tile.y).find(
       (entity) => entity.type === 'tree' || entity.type === 'rock',
     )
@@ -99,7 +148,7 @@ export function createControls(
       return
     }
 
-    const item = entitiesAt(state, tile.x, tile.y).find((entity) => entity.type === 'log' || entity.type === 'stone')
+    const item = entitiesAt(state, tile.x, tile.y).find((entity) => isItemKind(entity.type))
     if (item !== undefined && player.held === null) {
       approach(tile, { op: 'PICK_UP', target: item.id })
       return

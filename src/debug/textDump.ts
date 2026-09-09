@@ -1,4 +1,5 @@
 import { getTile } from '../sim/world'
+import { ITEM_KINDS } from '../sim/entities'
 import type { SimState, TileType } from '../sim/types'
 
 function tileChar(tile: TileType): string {
@@ -37,8 +38,20 @@ export function textDump(state: SimState): string {
       const moveTarget =
         entity.moveTarget === null ? 'none' : `(${entity.moveTarget.x},${entity.moveTarget.y})`
       const held = entity.held === null ? 'none' : entity.held
+      let extra = ''
+      if (entity.storage !== null) {
+        const storage = entity.storage
+        const contents = ITEM_KINDS.filter((kind) => (storage[kind] ?? 0) > 0)
+          .map((kind) => `${kind}=${storage[kind]}`)
+          .join(',')
+        extra += ` storage=${contents === '' ? 'empty' : contents}`
+      }
+      if (entity.type === 'benchSaw') {
+        extra +=
+          entity.craftingUntilTick === null ? ' crafting=idle' : ` crafting=until-tick-${entity.craftingUntilTick}`
+      }
       lines.push(
-        `  ${index + 1}. id=${entity.id} type=${entity.type} pos=(${entity.pos.x},${entity.pos.y}) moveTarget=${moveTarget} held=${held}`,
+        `  ${index + 1}. id=${entity.id} type=${entity.type} pos=(${entity.pos.x},${entity.pos.y}) moveTarget=${moveTarget} held=${held}${extra}`,
       )
     })
   }

@@ -3,9 +3,9 @@ import type { Rng } from './rng'
 export type TileType = 'grass' | 'dirt' | 'stone' | 'water'
 
 /** An item that can be carried in hand, dropped, and picked back up. */
-export type ItemKind = 'log' | 'stone'
+export type ItemKind = 'log' | 'stone' | 'plank'
 
-export type EntityType = 'player' | 'bot' | 'tree' | 'rock' | ItemKind
+export type EntityType = 'player' | 'bot' | 'tree' | 'rock' | 'stockpile' | 'benchSaw' | ItemKind
 
 export type EntityId = number
 
@@ -27,6 +27,10 @@ export interface Entity {
   held: ItemKind | null
   /** Tick at which this actor's current timed action finishes. Busy while state.tick is earlier. */
   busyUntilTick: number
+  /** Typed item store. Non-null only for containers and machines (stockpile, benchSaw). */
+  storage: Partial<Record<ItemKind, number>> | null
+  /** Tick at which a machine's current recipe finishes. Null when idle or not a machine. */
+  craftingUntilTick: number | null
 }
 
 export interface SimState {

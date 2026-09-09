@@ -2,11 +2,12 @@ import type { Entity, EntityId, ItemKind, SimState, TileRef, TileType } from './
 import { createRng } from './rng'
 import { MOVE_TICKS_PER_TILE } from './movement'
 import { createGroundItem, createRock, createTree } from './entities'
+import { createBenchSaw, createStockpile } from './machines'
 
 const DEFAULT_TILE: TileType = 'grass'
 
 /** Entity types that occupy their tile exclusively — nothing else can walk onto or path through it. */
-const BLOCKING_TYPES = new Set(['tree', 'rock'])
+const BLOCKING_TYPES = new Set(['tree', 'rock', 'stockpile', 'benchSaw'])
 
 export function createWorld(width: number, height: number, seed: number): SimState {
   return {
@@ -69,6 +70,8 @@ export function addPlayer(state: SimState, x: number, y: number): EntityId {
     path: [],
     held: null,
     busyUntilTick: 0,
+    storage: null,
+    craftingUntilTick: null,
   })
 }
 
@@ -82,6 +85,14 @@ export function addRock(state: SimState, x: number, y: number): EntityId {
 
 export function addGroundItem(state: SimState, kind: ItemKind, x: number, y: number): EntityId {
   return addEntity(state, createGroundItem(kind, { x, y }))
+}
+
+export function addStockpile(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, createStockpile({ x, y }))
+}
+
+export function addBenchSaw(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, createBenchSaw({ x, y }))
 }
 
 export function inBounds(state: SimState, tile: TileRef): boolean {

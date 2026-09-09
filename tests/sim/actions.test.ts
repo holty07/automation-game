@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { addGroundItem, addPlayer, addRock, addTree, createWorld } from '../../src/sim/world'
+import { addBenchSaw, addGroundItem, addPlayer, addRock, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
 import { executeAction } from '../../src/sim/actions'
+import { BENCH_SAW_RECIPE } from '../../src/sim/machines'
 
 describe('executeAction', () => {
   it('rejects an unknown actor', () => {
@@ -138,5 +139,235 @@ describe('executeAction', () => {
     const result = executeAction(state, playerId, { op: 'MOVE_TO', target: { x: 2, y: 1 } })
 
     expect(result).toEqual({ ok: false, reason: 'target is blocked' })
+  })
+
+  describe('GIVE_TO', () => {
+    it('stores a held item in a stockpile', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const stockpileId = addStockpile(state, 2, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'log'
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: stockpileId })
+
+      expect(result.ok).toBe(true)
+      expect(player.held).toBeNull()
+      expect(getEntity(state, stockpileId)?.storage).toEqual({ log: 1 })
+    })
+
+    it('rejects GIVE_TO when not holding anything', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const stockpileId = addStockpile(state, 2, 1)
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: stockpileId })
+
+      expect(result).toEqual({ ok: false, reason: 'not holding anything' })
+    })
+
+    it('rejects GIVE_TO a target that is not a container', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const otherId = addPlayer(state, 2, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'log'
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: otherId })
+
+      expect(result).toEqual({ ok: false, reason: 'nothing to give to there' })
+    })
+
+    it('feeds a log into a bench saw, starting its recipe', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const benchSawId = addBenchSaw(state, 2, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'log'
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: benchSawId })
+
+      expect(result.ok).toBe(true)
+      expect(player.held).toBeNull()
+      expect(getEntity(state, benchSawId)?.craftingUntilTick).toBe(state.tick + BENCH_SAW_RECIPE.ticks)
+    })
+
+    it('rejects feeding a bench saw a stone', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const benchSawId = addBenchSaw(state, 2, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'stone'
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: benchSawId })
+
+      expect(result).toEqual({ ok: false, reason: 'the bench saw cannot use that' })
+    })
+
+    it('rejects feeding a bench saw that is already crafting', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const benchSawId = addBenchSaw(state, 2, 1)
+      const benchSaw = getEntity(state, benchSawId)
+      if (benchSaw === undefined) {
+        throw new Error('bench saw missing')
+      }
+      benchSaw.craftingUntilTick = state.tick + BENCH_SAW_RECIPE.ticks
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'log'
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: benchSawId })
+
+      expect(result).toEqual({ ok: false, reason: 'the bench saw is busy' })
+    })
+
+    it('rejects GIVE_TO when not adjacent to the container', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 0, 0)
+      const stockpileId = addStockpile(state, 4, 4)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'log'
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: stockpileId })
+
+      expect(result).toEqual({ ok: false, reason: 'target is out of reach' })
+    })
+  })
+
+  describe('TAKE_FROM', () => {
+    it('takes an item out of a stockpile', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const stockpileId = addStockpile(state, 2, 1)
+      const stockpile = getEntity(state, stockpileId)
+      if (stockpile === undefined || stockpile.storage === null) {
+        throw new Error('stockpile missing')
+      }
+      stockpile.storage.plank = 2
+
+      const result = executeAction(state, playerId, { op: 'TAKE_FROM', target: stockpileId, item: 'plank' })
+
+      expect(result.ok).toBe(true)
+      expect(getEntity(state, playerId)?.held).toBe('plank')
+      expect(stockpile.storage).toEqual({ plank: 1 })
+    })
+
+    it('rejects TAKE_FROM when hands are already full', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const stockpileId = addStockpile(state, 2, 1)
+      const stockpile = getEntity(state, stockpileId)
+      if (stockpile === undefined || stockpile.storage === null) {
+        throw new Error('stockpile missing')
+      }
+      stockpile.storage.plank = 1
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'log'
+
+      const result = executeAction(state, playerId, { op: 'TAKE_FROM', target: stockpileId, item: 'plank' })
+
+      expect(result).toEqual({ ok: false, reason: 'hands are full' })
+    })
+
+    it('rejects TAKE_FROM when the container has none of that kind', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const stockpileId = addStockpile(state, 2, 1)
+
+      const result = executeAction(state, playerId, { op: 'TAKE_FROM', target: stockpileId, item: 'plank' })
+
+      expect(result).toEqual({ ok: false, reason: 'nothing of that kind to take' })
+    })
+
+    it('collects a finished plank from a bench saw', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const benchSawId = addBenchSaw(state, 2, 1)
+      const benchSaw = getEntity(state, benchSawId)
+      if (benchSaw === undefined || benchSaw.storage === null) {
+        throw new Error('bench saw missing')
+      }
+      benchSaw.storage.plank = 1
+
+      const result = executeAction(state, playerId, { op: 'TAKE_FROM', target: benchSawId, item: 'plank' })
+
+      expect(result.ok).toBe(true)
+      expect(getEntity(state, playerId)?.held).toBe('plank')
+    })
+  })
+
+  describe('BUILD', () => {
+    it('places a stockpile on an empty adjacent tile', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+
+      const result = executeAction(state, playerId, { op: 'BUILD', kind: 'stockpile', target: { x: 2, y: 1 } })
+
+      expect(result.ok).toBe(true)
+      const built = getEntity(state, result.producedEntityId ?? -1)
+      expect(built?.type).toBe('stockpile')
+      expect(built?.storage).toEqual({})
+    })
+
+    it('places a bench saw on an empty adjacent tile', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+
+      const result = executeAction(state, playerId, { op: 'BUILD', kind: 'benchSaw', target: { x: 2, y: 1 } })
+
+      expect(result.ok).toBe(true)
+      const built = getEntity(state, result.producedEntityId ?? -1)
+      expect(built?.type).toBe('benchSaw')
+      expect(built?.craftingUntilTick).toBeNull()
+    })
+
+    it('rejects BUILD outside the world', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 0, 0)
+
+      const result = executeAction(state, playerId, { op: 'BUILD', kind: 'stockpile', target: { x: -1, y: 0 } })
+
+      expect(result).toEqual({ ok: false, reason: 'target is out of bounds' })
+    })
+
+    it('rejects BUILD on a tile that is not adjacent', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 0, 0)
+
+      const result = executeAction(state, playerId, { op: 'BUILD', kind: 'stockpile', target: { x: 4, y: 4 } })
+
+      expect(result).toEqual({ ok: false, reason: 'target is out of reach' })
+    })
+
+    it('rejects BUILD on an occupied tile', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      addTree(state, 2, 1)
+
+      const result = executeAction(state, playerId, { op: 'BUILD', kind: 'stockpile', target: { x: 2, y: 1 } })
+
+      expect(result).toEqual({ ok: false, reason: 'target is occupied' })
+    })
   })
 })
