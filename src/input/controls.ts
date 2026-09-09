@@ -1,6 +1,8 @@
-import type { EntityId, SimState } from '../sim/types'
-import { setMoveTarget } from '../sim/movement'
-import { getEntity } from '../sim/world'
+import type { EntityId, SimState, TileRef } from '../sim/types'
+import type { ActionRequest } from '../sim/actions'
+import { executeAction } from '../sim/actions'
+import { findPathAdjacentTo } from '../sim/pathfind'
+import { entitiesAt, getEntity, inBounds } from '../sim/world'
 import type { Camera } from '../render/camera'
 import { screenToTile } from '../render/camera'
 
@@ -34,6 +36,8 @@ export function createControls(
   playerId: EntityId,
 ): Controls {
   const pressed = new Set<string>()
+  /** An action queued to fire once the player finishes walking to it (a click on a distant target). */
+  let pendingIntent: ActionRequest | null = null
 
   function onKeyDown(event: KeyboardEvent): void {
     if (event.code in DIRECTION_KEYS) {
@@ -43,6 +47,23 @@ export function createControls(
 
   function onKeyUp(event: KeyboardEvent): void {
     pressed.delete(event.code)
+  }
+
+  /** Walks the player to `destination` and fires `intent` on arrival, or immediately if already there. */
+  function approach(destination: TileRef, intent: ActionRequest): void {
+    const player = getEntity(state, playerId)
+    if (player === undefined) {
+      return
+    }
+    if (player.pos.x === destination.x && player.pos.y === destination.y) {
+      pendingIntent = null
+      executeAction(state, playerId, intent)
+      return
+    }
+    const moveResult = executeAction(state, playerId, { op: 'MOVE_TO', target: destination })
+    // Only queue the follow-up if the walk actually started — otherwise it would fire
+    // next frame from the player's current (wrong) position.
+    pendingIntent = moveResult.ok ? intent : null
   }
 
   function onClick(event: MouseEvent): void {
@@ -58,7 +79,39 @@ export function createControls(
       event.clientX - rect.left,
       event.clientY - rect.top,
     )
-    setMoveTarget(state, playerId, tile)
+    if (!inBounds(state, tile)) {
+      return
+    }
+
+    const resource = entitiesAt(state, tile.x, tile.y).find(
+      (entity) => entity.type === 'tree' || entity.type === 'rock',
+    )
+    if (resource !== undefined) {
+      const path = findPathAdjacentTo(state, player.pos, resource.pos)
+      if (path === null) {
+        return
+      }
+      const destination = path.length === 0 ? player.pos : path[path.length - 1]
+      if (destination === undefined) {
+        return
+      }
+      approach(destination, { op: 'USE', target: resource.id })
+      return
+    }
+
+    const item = entitiesAt(state, tile.x, tile.y).find((entity) => entity.type === 'log' || entity.type === 'stone')
+    if (item !== undefined && player.held === null) {
+      approach(tile, { op: 'PICK_UP', target: item.id })
+      return
+    }
+
+    if (player.held !== null) {
+      approach(tile, { op: 'DROP', target: tile })
+      return
+    }
+
+    pendingIntent = null
+    executeAction(state, playerId, { op: 'MOVE_TO', target: tile })
   }
 
   window.addEventListener('keydown', onKeyDown)
@@ -67,6 +120,15 @@ export function createControls(
 
   return {
     update(): void {
+      if (pendingIntent !== null) {
+        const player = getEntity(state, playerId)
+        if (player !== undefined && player.moveTarget === null && player.path.length === 0) {
+          const intent = pendingIntent
+          pendingIntent = null
+          executeAction(state, playerId, intent)
+        }
+      }
+
       if (pressed.size === 0) {
         return
       }
@@ -89,7 +151,8 @@ export function createControls(
       if (dx === 0 && dy === 0) {
         return
       }
-      setMoveTarget(state, playerId, { x: player.pos.x + dx, y: player.pos.y + dy })
+      pendingIntent = null
+      executeAction(state, playerId, { op: 'MOVE_TO', target: { x: player.pos.x + dx, y: player.pos.y + dy } })
     },
     destroy(): void {
       window.removeEventListener('keydown', onKeyDown)

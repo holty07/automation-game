@@ -10,6 +10,10 @@ const TILE_COLOURS: Record<TileType, string> = {
 const ENTITY_COLOURS: Record<EntityType, string> = {
   player: '#f2c245',
   bot: '#c2452f',
+  tree: '#2d5f34',
+  rock: '#6e6e6e',
+  log: '#8a5a2b',
+  stone: '#a8a8a8',
 }
 
 export function drawTile(ctx: CanvasRenderingContext2D, tile: TileType, x: number, y: number, size: number): void {

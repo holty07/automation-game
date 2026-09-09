@@ -36,8 +36,9 @@ export function textDump(state: SimState): string {
     sorted.forEach((entity, index) => {
       const moveTarget =
         entity.moveTarget === null ? 'none' : `(${entity.moveTarget.x},${entity.moveTarget.y})`
+      const held = entity.held === null ? 'none' : entity.held
       lines.push(
-        `  ${index + 1}. id=${entity.id} type=${entity.type} pos=(${entity.pos.x},${entity.pos.y}) moveTarget=${moveTarget}`,
+        `  ${index + 1}. id=${entity.id} type=${entity.type} pos=(${entity.pos.x},${entity.pos.y}) moveTarget=${moveTarget} held=${held}`,
       )
     })
   }

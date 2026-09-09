@@ -1,4 +1,4 @@
-import { addPlayer, createWorld } from './sim/world'
+import { addPlayer, addRock, addTree, createWorld } from './sim/world'
 import { createLoop } from './sim/tick'
 import { textDump } from './debug/textDump'
 import { createCamera } from './render/camera'
@@ -7,9 +7,26 @@ import { createControls } from './input/controls'
 
 const WORLD_SIZE = 64
 const TILE_SIZE = 32
+const TREE_COUNT = 24
+const ROCK_COUNT = 16
 
 const state = createWorld(WORLD_SIZE, WORLD_SIZE, 1)
-const playerId = addPlayer(state, Math.floor(WORLD_SIZE / 2), Math.floor(WORLD_SIZE / 2))
+const centre = Math.floor(WORLD_SIZE / 2)
+const playerId = addPlayer(state, centre, centre)
+
+function scatter(count: number, place: (x: number, y: number) => void): void {
+  for (let i = 0; i < count; i += 1) {
+    const x = state.rng.nextInt(WORLD_SIZE)
+    const y = state.rng.nextInt(WORLD_SIZE)
+    if (x === centre && y === centre) {
+      continue
+    }
+    place(x, y)
+  }
+}
+
+scatter(TREE_COUNT, (x, y) => addTree(state, x, y))
+scatter(ROCK_COUNT, (x, y) => addRock(state, x, y))
 
 console.log(textDump(state))
 

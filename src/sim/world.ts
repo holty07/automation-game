@@ -1,8 +1,12 @@
-import type { Entity, EntityId, SimState, TileType } from './types'
+import type { Entity, EntityId, ItemKind, SimState, TileRef, TileType } from './types'
 import { createRng } from './rng'
 import { MOVE_TICKS_PER_TILE } from './movement'
+import { createGroundItem, createRock, createTree } from './entities'
 
 const DEFAULT_TILE: TileType = 'grass'
+
+/** Entity types that occupy their tile exclusively — nothing else can walk onto or path through it. */
+const BLOCKING_TYPES = new Set(['tree', 'rock'])
 
 export function createWorld(width: number, height: number, seed: number): SimState {
   return {
@@ -62,5 +66,32 @@ export function addPlayer(state: SimState, x: number, y: number): EntityId {
     prevPos: { x, y },
     moveTarget: null,
     moveCooldown: MOVE_TICKS_PER_TILE - 1,
+    path: [],
+    held: null,
+    busyUntilTick: 0,
   })
+}
+
+export function addTree(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, createTree({ x, y }))
+}
+
+export function addRock(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, createRock({ x, y }))
+}
+
+export function addGroundItem(state: SimState, kind: ItemKind, x: number, y: number): EntityId {
+  return addEntity(state, createGroundItem(kind, { x, y }))
+}
+
+export function inBounds(state: SimState, tile: TileRef): boolean {
+  return tile.x >= 0 && tile.x < state.width && tile.y >= 0 && tile.y < state.height
+}
+
+/** Whether an actor could stand on this tile — in bounds and not occupied by a blocking entity. */
+export function isWalkable(state: SimState, tile: TileRef): boolean {
+  if (!inBounds(state, tile)) {
+    return false
+  }
+  return !entitiesAt(state, tile.x, tile.y).some((entity) => BLOCKING_TYPES.has(entity.type))
 }
