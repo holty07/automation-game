@@ -12,16 +12,20 @@ export type TargetRef =
   | { mode: 'lastResult' }
   | { mode: 'marker'; markerId: string }
 
+/** REPEAT's loop count. WAIT's duration and M7's conditions will be their own params variants. */
+export type RepeatParams = { mode: 'forever' } | { mode: 'count'; count: number }
+
 export interface Instruction {
   /** Stable uuid — the editor's drag handle. */
   id: string
   op: Opcode
+  /** Targets only — never a literal like a count, a duration or a condition. */
   args: TargetRef[]
   /** REPEAT's loop body. */
   children?: Instruction[]
   elseChildren?: Instruction[]
-  /** REPEAT only: how many passes to make, or 'forever'. */
-  repeat?: number | 'forever'
+  /** Control-flow parameters. REPEAT only, for now. */
+  params?: RepeatParams
   /** TAKE_FROM only: which item kind to withdraw. */
   item?: ItemKind
 }
@@ -87,7 +91,7 @@ function isWrappedInOuterRepeatForever(instructions: Instruction[]): boolean {
     return false
   }
   const [only] = instructions
-  return only !== undefined && only.op === 'REPEAT' && only.repeat === 'forever'
+  return only !== undefined && only.op === 'REPEAT' && only.params?.mode === 'forever'
 }
 
 /**
@@ -117,9 +121,9 @@ export function validate(program: Program, tier: BotTier): ValidationResult {
 
   for (const instruction of walkAll(program.instructions)) {
     if (instruction.op === 'REPEAT') {
-      if (instruction.repeat === undefined) {
-        errors.push(`REPEAT instruction ${instruction.id} is missing a repeat count`)
-      } else if (instruction.repeat !== 'forever' && instruction.repeat <= 0) {
+      if (instruction.params === undefined) {
+        errors.push(`REPEAT instruction ${instruction.id} is missing params`)
+      } else if (instruction.params.mode === 'count' && instruction.params.count <= 0) {
         errors.push(`REPEAT instruction ${instruction.id} must repeat a positive number of times`)
       }
       if (instruction.children === undefined || instruction.children.length === 0) {

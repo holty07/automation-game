@@ -40,7 +40,7 @@ describe('validate', () => {
       id: 'p1',
       name: 'wrapped',
       version: 1,
-      instructions: [{ id: 'outer', op: 'REPEAT', args: [], repeat: 'forever', children: instructions }],
+      instructions: [{ id: 'outer', op: 'REPEAT', args: [], params: { mode: 'forever' }, children: instructions }],
     }
 
     expect(validate(program, 'mk1')).toEqual({ ok: true, errors: [] })
@@ -76,13 +76,43 @@ describe('validate', () => {
       id: 'p1',
       name: 'empty repeat',
       version: 1,
-      instructions: [{ id: '1', op: 'REPEAT', args: [], repeat: 'forever' }],
+      instructions: [{ id: '1', op: 'REPEAT', args: [], params: { mode: 'forever' } }],
     }
 
     const result = validate(program, 'mk1')
 
     expect(result.ok).toBe(false)
     expect(result.errors.some((error) => error.includes('no children'))).toBe(true)
+  })
+
+  it('rejects a REPEAT with no params', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'no params',
+      version: 1,
+      instructions: [{ id: '1', op: 'REPEAT', args: [], children: [moveInstruction('2')] }],
+    }
+
+    const result = validate(program, 'mk1')
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.some((error) => error.includes('missing params'))).toBe(true)
+  })
+
+  it('rejects a REPEAT count of zero or less', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'bad count',
+      version: 1,
+      instructions: [
+        { id: '1', op: 'REPEAT', args: [], params: { mode: 'count', count: 0 }, children: [moveInstruction('2')] },
+      ],
+    }
+
+    const result = validate(program, 'mk1')
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.some((error) => error.includes('positive number of times'))).toBe(true)
   })
 
   it('rejects a TAKE_FROM missing its item', () => {

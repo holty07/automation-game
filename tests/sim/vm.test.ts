@@ -57,7 +57,7 @@ describe('bot VM', () => {
           id: 'outer',
           op: 'REPEAT',
           args: [],
-          repeat: 'forever',
+          params: { mode: 'forever' },
           children: [
             { id: '1', op: 'MOVE_TO', args: [{ mode: 'nearestOf', entityType: 'tree' }] },
             { id: '2', op: 'USE', args: [{ mode: 'lastResult' }] },
@@ -87,7 +87,7 @@ describe('bot VM', () => {
         id: 'outer',
         op: 'REPEAT',
         args: [],
-        repeat: 3,
+        params: { mode: 'count', count: 3 },
         children: [{ id: 'step', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 0, y: 0 } }] }],
       },
       { id: 'final', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 1, y: 0 } }] },
@@ -176,7 +176,7 @@ describe('bot VM', () => {
       id: 'p',
       name: 'empty loop',
       version: 1,
-      instructions: [{ id: '1', op: 'REPEAT', args: [], repeat: 'forever', children: [] }],
+      instructions: [{ id: '1', op: 'REPEAT', args: [], params: { mode: 'forever' }, children: [] }],
     }
     state.programs[program.id] = program
     state.botRuntimes[botId] = createBotRuntime(program.id, program)

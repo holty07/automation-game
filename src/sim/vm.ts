@@ -256,7 +256,8 @@ function stepBot(state: SimState, botId: EntityId, runtime: BotRuntime): void {
 
     if (instruction.op === 'REPEAT') {
       frame.index += 1
-      const iterationsLeft = instruction.repeat === 'forever' || instruction.repeat === undefined ? null : instruction.repeat
+      const iterationsLeft =
+        instruction.params === undefined || instruction.params.mode === 'forever' ? null : instruction.params.count
       runtime.frames.push({ instructions: instruction.children ?? [], index: 0, iterationsLeft })
       continue
     }
