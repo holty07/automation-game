@@ -1,5 +1,6 @@
 import type { Entity, EntityId, SimState, TileType } from './types'
 import { createRng } from './rng'
+import { MOVE_TICKS_PER_TILE } from './movement'
 
 const DEFAULT_TILE: TileType = 'grass'
 
@@ -48,4 +49,18 @@ export function removeEntity(state: SimState, id: EntityId): void {
 
 export function entitiesAt(state: SimState, x: number, y: number): Entity[] {
   return state.entities.filter((entity) => entity.pos.x === x && entity.pos.y === y)
+}
+
+export function getEntity(state: SimState, id: EntityId): Entity | undefined {
+  return state.entities.find((entity) => entity.id === id)
+}
+
+export function addPlayer(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, {
+    type: 'player',
+    pos: { x, y },
+    prevPos: { x, y },
+    moveTarget: null,
+    moveCooldown: MOVE_TICKS_PER_TILE - 1,
+  })
 }

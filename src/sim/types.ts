@@ -15,6 +15,9 @@ export interface Entity {
   id: EntityId
   type: EntityType
   pos: TileRef
+  prevPos: TileRef
+  moveTarget: TileRef | null
+  moveCooldown: number
 }
 
 export interface SimState {

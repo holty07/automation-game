@@ -1,17 +1,19 @@
 import type { SimState } from './types'
+import { stepMovement } from './movement'
 
 const TICK_RATE_HZ = 20
 const TICK_DURATION_MS = 1000 / TICK_RATE_HZ
 
 export function tick(state: SimState): void {
   state.tick += 1
+  stepMovement(state)
 }
 
 export interface Loop {
   stop(): void
 }
 
-export function createLoop(state: SimState, onFrame: (state: SimState) => void): Loop {
+export function createLoop(state: SimState, onFrame: (state: SimState, alpha: number) => void): Loop {
   let accumulator = 0
   let lastTime: number | undefined
   let running = true
@@ -28,7 +30,7 @@ export function createLoop(state: SimState, onFrame: (state: SimState) => void):
       }
     }
     lastTime = time
-    onFrame(state)
+    onFrame(state, accumulator / TICK_DURATION_MS)
     requestAnimationFrame(frame)
   }
 
