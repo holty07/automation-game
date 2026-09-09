@@ -1,43 +1,16 @@
 import type { ActionRequest } from './actions'
 import { executeAction, isActorBusy } from './actions'
+import type { BotRuntime, Frame } from './botRuntime'
 import { isItemKind } from './entities'
 import { findPathAdjacentTo } from './pathfind'
-import type { Instruction, Opcode, Program } from './program'
+import type { Instruction } from './program'
 import type { ResolvedTarget } from './targeting'
 import { resolveTarget } from './targeting'
 import type { Entity, EntityId, SimState, TileRef } from './types'
 import { entitiesAt, getEntity, isWalkable } from './world'
 
-/** A frame of the bot's call stack: a running position through one instruction list. */
-export interface Frame {
-  instructions: Instruction[]
-  index: number
-  /** null = loop forever (REPEAT forever); otherwise passes left, decremented each completed pass. */
-  iterationsLeft: number | null
-}
-
-export type FailurePolicy = 'wait' | 'skip' | 'halt'
-
-export interface CurrentAction {
-  op: Opcode
-  resolvedTarget: EntityId | TileRef | null
-  ticksRemaining: number
-}
-
-export type BotStatus = 'running' | 'blocked' | 'halted'
-
-export interface BotRuntime {
-  programId: string
-  frames: Frame[]
-  currentAction: CurrentAction | null
-  status: BotStatus
-  blockedReason?: string
-  failurePolicy: FailurePolicy
-  /** Register holding the previous instruction's result, read by the `lastResult` target binding. */
-  lastResult: ResolvedTarget | null
-  /** Under the 'wait' failure policy, the tick at which resolution should be retried. */
-  blockedRetryAt: number
-}
+export type { BotRuntime, BotStatus, CurrentAction, FailurePolicy, Frame } from './botRuntime'
+export { createBotRuntime } from './botRuntime'
 
 /** One game-second at the fixed 20Hz tick rate: how often a blocked 'wait' bot retries. */
 const RETRY_TICKS = 20
@@ -45,18 +18,6 @@ const RETRY_TICKS = 20
 /** Bounds free (no-time-cost) control-flow steps within a single tick, so a malformed empty
  * REPEAT loop blocks the bot instead of hanging the tick forever. */
 const CONTROL_FLOW_GUARD = 10000
-
-export function createBotRuntime(programId: string, program: Program, failurePolicy: FailurePolicy = 'wait'): BotRuntime {
-  return {
-    programId,
-    frames: [{ instructions: program.instructions, index: 0, iterationsLeft: 1 }],
-    currentAction: null,
-    status: 'running',
-    failurePolicy,
-    lastResult: null,
-    blockedRetryAt: 0,
-  }
-}
 
 function toDisplayTarget(resolved: ResolvedTarget): EntityId | TileRef | null {
   switch (resolved.kind) {

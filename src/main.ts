@@ -1,5 +1,6 @@
 import { addPlayer, addRock, addTree, createWorld } from './sim/world'
 import { createLoop } from './sim/tick'
+import { createRecorder } from './sim/recorder'
 import { textDump } from './debug/textDump'
 import { createCamera } from './render/camera'
 import { render } from './render/canvas'
@@ -46,8 +47,9 @@ if (!(ui instanceof HTMLElement)) {
 }
 
 const camera = createCamera(TILE_SIZE, canvas.width, canvas.height)
-const toolbar = createToolbar(ui, state, playerId)
-const controls = createControls(canvas, state, camera, playerId, toolbar)
+const recorder = createRecorder()
+const toolbar = createToolbar(ui, state, playerId, recorder)
+const controls = createControls(canvas, state, camera, playerId, toolbar, recorder)
 
 createLoop(state, (currentState, alpha) => {
   controls.update()

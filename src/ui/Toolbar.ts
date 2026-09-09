@@ -1,4 +1,7 @@
 import type { BuildableType } from '../sim/actions'
+import { executeAction } from '../sim/actions'
+import type { Recorder } from '../sim/recorder'
+import { buildRecordedProgram } from '../sim/recorder'
 import type { EntityId, SimState } from '../sim/types'
 import { getEntity } from '../sim/world'
 
@@ -15,11 +18,36 @@ const BUILD_LABELS: Record<BuildableType, string> = {
   benchSaw: 'Bench Saw',
 }
 
-export function createToolbar(container: HTMLElement, state: SimState, playerId: EntityId): Toolbar {
+export function createToolbar(container: HTMLElement, state: SimState, playerId: EntityId, recorder: Recorder): Toolbar {
   let pending: BuildableType | null = null
+  let recordedProgramCount = 0
 
   const heldLabel = document.createElement('span')
   container.append(heldLabel)
+
+  const recordButton = document.createElement('button')
+  function refreshRecordButton(): void {
+    recordButton.textContent = recorder.recording ? 'Stop' : 'Record'
+  }
+  /** On stop: wraps whatever was captured in REPEAT forever and hands it to a freshly spawned bot. */
+  function onRecordClick(): void {
+    if (recorder.recording) {
+      const instructions = recorder.stop()
+      refreshRecordButton()
+      if (instructions.length === 0) {
+        return
+      }
+      recordedProgramCount += 1
+      const program = buildRecordedProgram(`recorded-${recordedProgramCount}`, `Recorded ${recordedProgramCount}`, instructions)
+      executeAction(state, playerId, { op: 'DEPLOY_BOT', program })
+      return
+    }
+    recorder.start()
+    refreshRecordButton()
+  }
+  recordButton.addEventListener('click', onRecordClick)
+  refreshRecordButton()
+  container.append(recordButton)
 
   const buttons = new Map<BuildableType, HTMLButtonElement>()
 
@@ -56,6 +84,7 @@ export function createToolbar(container: HTMLElement, state: SimState, playerId:
     },
     destroy(): void {
       heldLabel.remove()
+      recordButton.remove()
       for (const button of buttons.values()) {
         button.remove()
       }

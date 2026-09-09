@@ -370,4 +370,29 @@ describe('executeAction', () => {
       expect(result).toEqual({ ok: false, reason: 'target is occupied' })
     })
   })
+
+  describe('DEPLOY_BOT', () => {
+    it('spawns a running bot at the actor position and registers the program', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const program = {
+        id: 'recorded-1',
+        name: 'Recorded 1',
+        version: 1,
+        instructions: [{ id: '1', op: 'MOVE_TO' as const, args: [{ mode: 'absolute' as const, tile: { x: 1, y: 1 } }] }],
+      }
+
+      const result = executeAction(state, playerId, { op: 'DEPLOY_BOT', program })
+
+      expect(result.ok).toBe(true)
+      const botId = result.producedEntityId
+      expect(botId).toBeDefined()
+      const bot = getEntity(state, botId ?? -1)
+      expect(bot?.type).toBe('bot')
+      expect(bot?.pos).toEqual({ x: 1, y: 1 })
+      expect(state.programs[program.id]).toBe(program)
+      expect(state.botRuntimes[botId ?? -1]?.status).toBe('running')
+      expect(state.botRuntimes[botId ?? -1]?.programId).toBe(program.id)
+    })
+  })
 })
