@@ -1,7 +1,8 @@
+import { assignRoutine, copyProgram, editProgram, saveRoutine, setBotTier, setFailurePolicy } from './botControl'
 import { createBotRuntime, type FailurePolicy } from './botRuntime'
 import { createGroundItem, getActionCost, isItemKind, RESOURCE_YIELD, staticEntity } from './entities'
 import { BENCH_SAW_RECIPE, CONTAINER_CAPACITY, createBenchSaw, createStockpile, totalStored } from './machines'
-import type { Instruction, Program } from './program'
+import type { BotTier, Instruction, Program } from './program'
 import type { Entity, EntityId, ItemKind, SimState, TileRef } from './types'
 import { addEntity, entitiesAt, getEntity, inBounds, isWalkable, removeEntity } from './world'
 import { findPath, isAdjacent } from './pathfind'
@@ -21,6 +22,10 @@ export type ActionRequest =
   | { op: 'DEPLOY_BOT'; program: Program }
   | { op: 'EDIT_PROGRAM'; botId: EntityId; instructions: Instruction[] }
   | { op: 'SET_FAILURE_POLICY'; botId: EntityId; policy: FailurePolicy }
+  | { op: 'SET_BOT_TIER'; botId: EntityId; tier: BotTier }
+  | { op: 'SAVE_ROUTINE'; botId: EntityId; routineId: string; name: string }
+  | { op: 'ASSIGN_ROUTINE'; botId: EntityId; routineId: string; programId: string }
+  | { op: 'COPY_PROGRAM'; fromBotId: EntityId; toBotId: EntityId; programId: string }
 
 export interface ActionResult {
   ok: boolean
@@ -202,40 +207,8 @@ function deployBot(state: SimState, actor: Entity, program: Program): ActionResu
   return { ok: true, producedEntityId: botId }
 }
 
-/** Replaces a bot's program instructions and resets its frame stack, so an editor edit takes
- * effect immediately without disturbing the bot's position, held item or world state. */
-function editProgram(state: SimState, botId: EntityId, instructions: Instruction[]): ActionResult {
-  const runtime = state.botRuntimes[botId]
-  if (runtime === undefined) {
-    return fail('bot has no program assigned')
-  }
-  const program = state.programs[runtime.programId]
-  if (program === undefined) {
-    return fail('unknown program')
-  }
-  program.instructions = instructions
-  runtime.frames = [{ instructions: program.instructions, index: 0, iterationsLeft: 1 }]
-  runtime.currentAction = null
-  runtime.status = 'running'
-  runtime.blockedReason = undefined
-  runtime.lastResult = null
-  runtime.blockedRetryAt = 0
-  return { ok: true }
-}
-
 function wait(state: SimState, actor: Entity, ticks: number): ActionResult {
   actor.busyUntilTick = state.tick + Math.max(0, ticks)
-  return { ok: true }
-}
-
-/** Sets a bot's failure policy directly — a player choice in the editor, not a timed action, so
- * it must work even while the bot is mid-action. */
-function setFailurePolicy(state: SimState, botId: EntityId, policy: FailurePolicy): ActionResult {
-  const runtime = state.botRuntimes[botId]
-  if (runtime === undefined) {
-    return fail('bot has no program assigned')
-  }
-  runtime.failurePolicy = policy
   return { ok: true }
 }
 
@@ -244,8 +217,9 @@ function setFailurePolicy(state: SimState, botId: EntityId, policy: FailurePolic
  * (vm.ts writes directly to a bot's own entry in `SimState.botRuntimes` — that's VM-internal program
  * counter/call-stack bookkeeping, not world state, so it's exempt from this rule.)
  *
- * EDIT_PROGRAM and SET_FAILURE_POLICY are handled before the actor lookup: they're editor edits,
- * not an actor performing a timed action, so they must work even while the bot is mid-action.
+ * EDIT_PROGRAM, SET_FAILURE_POLICY, SET_BOT_TIER, SAVE_ROUTINE, ASSIGN_ROUTINE and COPY_PROGRAM are
+ * all handled before the actor lookup: they're editor edits, not an actor performing a timed
+ * action, so they must work even while the bot is mid-action.
  */
 export function executeAction(state: SimState, actorId: EntityId, request: ActionRequest): ActionResult {
   if (request.op === 'EDIT_PROGRAM') {
@@ -253,6 +227,18 @@ export function executeAction(state: SimState, actorId: EntityId, request: Actio
   }
   if (request.op === 'SET_FAILURE_POLICY') {
     return setFailurePolicy(state, request.botId, request.policy)
+  }
+  if (request.op === 'SET_BOT_TIER') {
+    return setBotTier(state, request.botId, request.tier)
+  }
+  if (request.op === 'SAVE_ROUTINE') {
+    return saveRoutine(state, request.botId, request.routineId, request.name)
+  }
+  if (request.op === 'ASSIGN_ROUTINE') {
+    return assignRoutine(state, request.botId, request.routineId, request.programId)
+  }
+  if (request.op === 'COPY_PROGRAM') {
+    return copyProgram(state, request.fromBotId, request.toBotId, request.programId)
   }
 
   const actor = getEntity(state, actorId)

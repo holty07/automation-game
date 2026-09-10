@@ -1,6 +1,7 @@
 import type { Entity, EntityId, SimState, TileRef, TileType } from './types'
 import { createRng } from './rng'
 import type { Program } from './program'
+import type { Routine } from './routines'
 import type { BotRuntime } from './vm'
 
 export const SAVE_VERSION = 1
@@ -19,6 +20,7 @@ interface SaveDataV1 {
   areas?: Record<string, TileRef[]>
   markers?: Record<string, TileRef>
   programs?: Record<string, Program>
+  routines?: Record<string, Routine>
   botRuntimes?: Record<EntityId, BotRuntime>
 }
 
@@ -36,6 +38,7 @@ export function save(state: SimState): string {
     areas: state.areas,
     markers: state.markers,
     programs: state.programs,
+    routines: state.routines,
     botRuntimes: state.botRuntimes,
   }
   return JSON.stringify(data)
@@ -70,6 +73,7 @@ export function load(json: string): SimState {
     areas: data.areas ?? {},
     markers: data.markers ?? {},
     programs: data.programs ?? {},
+    routines: data.routines ?? {},
     botRuntimes: data.botRuntimes ?? {},
   }
 }

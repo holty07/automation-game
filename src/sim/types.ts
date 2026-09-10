@@ -1,5 +1,6 @@
 import type { Rng } from './rng'
 import type { Program } from './program'
+import type { Routine } from './routines'
 import type { BotRuntime } from './vm'
 
 export type TileType = 'grass' | 'dirt' | 'stone' | 'water'
@@ -48,8 +49,11 @@ export interface SimState {
   areas: Record<string, TileRef[]>
   /** Player-stamped named locations, keyed by marker id, used by the `marker` target binding. */
   markers: Record<string, TileRef>
-  /** The program library, keyed by program id. */
+  /** The program library, keyed by program id. Each is a running or once-run bot's own instructions. */
   programs: Record<string, Program>
+  /** The named routine library, keyed by routine id — saved from a bot's program, assignable to any
+   * bot, and runnable inline from any bot via the CALL opcode. */
+  routines: Record<string, Routine>
   /** Bot VM state, keyed by the bot entity's id. */
   botRuntimes: Record<EntityId, BotRuntime>
 }

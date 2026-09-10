@@ -1,7 +1,17 @@
 import type { EntityType, ItemKind, TileRef } from './types'
 
-/** Opcodes implemented by this milestone's VM. CALL arrives with bot tiers in M8. */
-export type Opcode = 'MOVE_TO' | 'PICK_UP' | 'DROP' | 'USE' | 'TAKE_FROM' | 'GIVE_TO' | 'REPEAT' | 'REPEAT_UNTIL' | 'IF' | 'WAIT'
+export type Opcode =
+  | 'MOVE_TO'
+  | 'PICK_UP'
+  | 'DROP'
+  | 'USE'
+  | 'TAKE_FROM'
+  | 'GIVE_TO'
+  | 'REPEAT'
+  | 'REPEAT_UNTIL'
+  | 'IF'
+  | 'WAIT'
+  | 'CALL'
 
 /** A reference to something in the world, with a binding mode that survives the world changing underneath it. */
 export type TargetRef =
@@ -43,6 +53,8 @@ export interface Instruction {
   waitTicks?: number
   /** TAKE_FROM only: which item kind to withdraw. */
   item?: ItemKind
+  /** CALL only: which saved routine to run inline. */
+  routineId?: string
 }
 
 export interface Program {
@@ -57,35 +69,28 @@ export const PROGRAM_VERSION = 1
 
 export type BotTier = 'mk1' | 'mk2' | 'mk3' | 'mk4'
 
-interface TierSpec {
-  maxInstructions: number
-  opcodes: readonly Opcode[]
-}
+const TIER_RANK: Record<BotTier, number> = { mk1: 0, mk2: 1, mk3: 2, mk4: 3 }
+
+/** Instruction cap per bot tier, from the design plan's bot-tier table (section 2). */
+const MAX_INSTRUCTIONS: Record<BotTier, number> = { mk1: 8, mk2: 20, mk3: 40, mk4: 100 }
 
 /**
- * Cost, cap and unlocked opcodes per bot tier, from the design plan's bot-tier table (section 2).
- * The design table would gate REPEAT_UNTIL/IF/WAIT to mk2/mk3, but bot tiers aren't a real feature
- * yet — every bot is treated as mk1 until M8 (see ScriptEditor's CURRENT_TIER) — and REPEAT with a
- * count param is already ungated at mk1 today despite the same table saying that's mk2-only. These
- * opcodes are ungated everywhere too, for consistency, so they're actually usable this milestone.
+ * The tier an opcode first becomes available at, from the same table. `REPEAT forever` is mk1 —
+ * it's the mechanic that makes automation work at all, so it's never gated — but a `REPEAT` with a
+ * fixed count is mk2, checked separately in `validate` since it's the same opcode either way.
  */
-const ALL_OPCODES: readonly Opcode[] = [
-  'MOVE_TO',
-  'PICK_UP',
-  'DROP',
-  'USE',
-  'REPEAT',
-  'REPEAT_UNTIL',
-  'IF',
-  'WAIT',
-  'TAKE_FROM',
-  'GIVE_TO',
-]
-const TIER_SPECS: Record<BotTier, TierSpec> = {
-  mk1: { maxInstructions: 8, opcodes: ALL_OPCODES.filter((op) => op !== 'TAKE_FROM' && op !== 'GIVE_TO') },
-  mk2: { maxInstructions: 20, opcodes: ALL_OPCODES },
-  mk3: { maxInstructions: 40, opcodes: ALL_OPCODES },
-  mk4: { maxInstructions: 100, opcodes: ALL_OPCODES },
+const OPCODE_MIN_TIER: Record<Opcode, BotTier> = {
+  MOVE_TO: 'mk1',
+  PICK_UP: 'mk1',
+  DROP: 'mk1',
+  USE: 'mk1',
+  REPEAT: 'mk1',
+  TAKE_FROM: 'mk2',
+  GIVE_TO: 'mk2',
+  WAIT: 'mk2',
+  REPEAT_UNTIL: 'mk3',
+  IF: 'mk3',
+  CALL: 'mk4',
 }
 
 export interface ValidationResult {
@@ -130,7 +135,15 @@ function isWrappedInOuterRepeatForever(instructions: Instruction[]): boolean {
 /** The instruction cap for a bot tier, as enforced by `validate`. Used by the editor UI to show
  * the counter without re-deriving the tier table. */
 export function instructionCap(tier: BotTier): number {
-  return TIER_SPECS[tier].maxInstructions
+  return MAX_INSTRUCTIONS[tier]
+}
+
+/** Whether `op` is unlocked at `tier`, per the design plan's bot-tier table. A REPEAT with a fixed
+ * count additionally requires mk2 even though REPEAT itself is unlocked at mk1 — check that
+ * separately via the instruction's own params, not through this opcode-level gate. Used both by
+ * `validate` and by the editor's "add instruction" palette. */
+export function isOpcodeAvailable(op: Opcode, tier: BotTier): boolean {
+  return TIER_RANK[tier] >= TIER_RANK[OPCODE_MIN_TIER[op]]
 }
 
 /** Instruction count against the cap: the implicit outer REPEAT forever wrapping a recorded
@@ -147,11 +160,11 @@ export function countScriptInstructions(program: Program): number {
  */
 export function validate(program: Program, tier: BotTier): ValidationResult {
   const errors: string[] = []
-  const spec = TIER_SPECS[tier]
+  const cap = MAX_INSTRUCTIONS[tier]
 
   const instructionCount = countScriptInstructions(program)
-  if (instructionCount > spec.maxInstructions) {
-    errors.push(`program has ${instructionCount} instructions, but ${tier} allows at most ${spec.maxInstructions}`)
+  if (instructionCount > cap) {
+    errors.push(`program has ${instructionCount} instructions, but ${tier} allows at most ${cap}`)
   }
 
   const usedOpcodes = new Set<Opcode>()
@@ -159,7 +172,7 @@ export function validate(program: Program, tier: BotTier): ValidationResult {
     usedOpcodes.add(instruction.op)
   }
   for (const op of usedOpcodes) {
-    if (!spec.opcodes.includes(op)) {
+    if (!isOpcodeAvailable(op, tier)) {
       errors.push(`opcode ${op} is not available on ${tier}`)
     }
   }
@@ -168,12 +181,20 @@ export function validate(program: Program, tier: BotTier): ValidationResult {
     if (instruction.op === 'REPEAT') {
       if (instruction.params === undefined) {
         errors.push(`REPEAT instruction ${instruction.id} is missing params`)
-      } else if (instruction.params.mode === 'count' && instruction.params.count <= 0) {
-        errors.push(`REPEAT instruction ${instruction.id} must repeat a positive number of times`)
+      } else if (instruction.params.mode === 'count') {
+        if (instruction.params.count <= 0) {
+          errors.push(`REPEAT instruction ${instruction.id} must repeat a positive number of times`)
+        }
+        if (TIER_RANK[tier] < TIER_RANK.mk2) {
+          errors.push(`REPEAT instruction ${instruction.id} needs a fixed count, which is not available on ${tier}`)
+        }
       }
       if (instruction.children === undefined || instruction.children.length === 0) {
         errors.push(`REPEAT instruction ${instruction.id} has no children`)
       }
+    }
+    if (instruction.op === 'CALL' && instruction.routineId === undefined) {
+      errors.push(`CALL instruction ${instruction.id} is missing a routineId`)
     }
     if (instruction.op === 'TAKE_FROM' && instruction.item === undefined) {
       errors.push(`TAKE_FROM instruction ${instruction.id} is missing an item`)

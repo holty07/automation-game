@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countScriptInstructions, instructionCap, migrate, validate } from '../../src/sim/program'
+import { countScriptInstructions, instructionCap, isOpcodeAvailable, migrate, validate } from '../../src/sim/program'
 import type { Instruction, Program } from '../../src/sim/program'
 
 function moveInstruction(id: string): Instruction {
@@ -129,7 +129,7 @@ describe('validate', () => {
     expect(result.errors.some((error) => error.includes('missing an item'))).toBe(true)
   })
 
-  it('accepts a REPEAT_UNTIL with a condition and children', () => {
+  it('accepts a REPEAT_UNTIL with a condition and children, at mk3', () => {
     const program: Program = {
       id: 'p1',
       name: 'until',
@@ -139,7 +139,7 @@ describe('validate', () => {
       ],
     }
 
-    expect(validate(program, 'mk1')).toEqual({ ok: true, errors: [] })
+    expect(validate(program, 'mk3')).toEqual({ ok: true, errors: [] })
   })
 
   it('rejects a REPEAT_UNTIL missing a condition', () => {
@@ -170,7 +170,7 @@ describe('validate', () => {
     expect(result.errors.some((error) => error.includes('no children'))).toBe(true)
   })
 
-  it('accepts an IF with only an else branch', () => {
+  it('accepts an IF with only an else branch, at mk3', () => {
     const program: Program = {
       id: 'p1',
       name: 'if-else',
@@ -180,7 +180,7 @@ describe('validate', () => {
       ],
     }
 
-    expect(validate(program, 'mk1')).toEqual({ ok: true, errors: [] })
+    expect(validate(program, 'mk3')).toEqual({ ok: true, errors: [] })
   })
 
   it('rejects an IF with no condition and no branches', () => {
@@ -198,7 +198,7 @@ describe('validate', () => {
     expect(result.errors.some((error) => error.includes('no branches'))).toBe(true)
   })
 
-  it('accepts a WAIT with a positive tick count', () => {
+  it('accepts a WAIT with a positive tick count, at mk2', () => {
     const program: Program = {
       id: 'p1',
       name: 'wait',
@@ -206,7 +206,7 @@ describe('validate', () => {
       instructions: [{ id: '1', op: 'WAIT', args: [], waitTicks: 20 }],
     }
 
-    expect(validate(program, 'mk1')).toEqual({ ok: true, errors: [] })
+    expect(validate(program, 'mk2')).toEqual({ ok: true, errors: [] })
   })
 
   it('rejects a WAIT with a non-positive tick count', () => {
@@ -221,6 +221,96 @@ describe('validate', () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors.some((error) => error.includes('positive number of ticks'))).toBe(true)
+  })
+
+  it('accepts REPEAT forever at mk1, the tier it is never gated behind', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'forever',
+      version: 1,
+      instructions: [{ id: '1', op: 'REPEAT', args: [], params: { mode: 'forever' }, children: [moveInstruction('2')] }],
+    }
+
+    expect(validate(program, 'mk1')).toEqual({ ok: true, errors: [] })
+  })
+
+  it('rejects a REPEAT with a fixed count below mk2', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'counted',
+      version: 1,
+      instructions: [{ id: '1', op: 'REPEAT', args: [], params: { mode: 'count', count: 3 }, children: [moveInstruction('2')] }],
+    }
+
+    const result = validate(program, 'mk1')
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.some((error) => error.includes('not available on mk1'))).toBe(true)
+  })
+
+  it('accepts a REPEAT with a fixed count at mk2', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'counted',
+      version: 1,
+      instructions: [{ id: '1', op: 'REPEAT', args: [], params: { mode: 'count', count: 3 }, children: [moveInstruction('2')] }],
+    }
+
+    expect(validate(program, 'mk2')).toEqual({ ok: true, errors: [] })
+  })
+
+  it('rejects a CALL below mk4', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'calls a routine',
+      version: 1,
+      instructions: [{ id: '1', op: 'CALL', args: [], routineId: 'r1' }],
+    }
+
+    const result = validate(program, 'mk3')
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.some((error) => error.includes('CALL') && error.includes('mk3'))).toBe(true)
+  })
+
+  it('accepts a CALL with a routineId at mk4', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'calls a routine',
+      version: 1,
+      instructions: [{ id: '1', op: 'CALL', args: [], routineId: 'r1' }],
+    }
+
+    expect(validate(program, 'mk4')).toEqual({ ok: true, errors: [] })
+  })
+
+  it('rejects a CALL missing its routineId', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'calls nothing',
+      version: 1,
+      instructions: [{ id: '1', op: 'CALL', args: [] }],
+    }
+
+    const result = validate(program, 'mk4')
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.some((error) => error.includes('missing a routineId'))).toBe(true)
+  })
+})
+
+describe('isOpcodeAvailable', () => {
+  it('matches the bot-tier table from the design plan', () => {
+    expect(isOpcodeAvailable('MOVE_TO', 'mk1')).toBe(true)
+    expect(isOpcodeAvailable('REPEAT', 'mk1')).toBe(true)
+    expect(isOpcodeAvailable('TAKE_FROM', 'mk1')).toBe(false)
+    expect(isOpcodeAvailable('TAKE_FROM', 'mk2')).toBe(true)
+    expect(isOpcodeAvailable('WAIT', 'mk1')).toBe(false)
+    expect(isOpcodeAvailable('WAIT', 'mk2')).toBe(true)
+    expect(isOpcodeAvailable('IF', 'mk2')).toBe(false)
+    expect(isOpcodeAvailable('IF', 'mk3')).toBe(true)
+    expect(isOpcodeAvailable('CALL', 'mk3')).toBe(false)
+    expect(isOpcodeAvailable('CALL', 'mk4')).toBe(true)
   })
 })
 

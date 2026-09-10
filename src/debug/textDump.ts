@@ -30,11 +30,12 @@ export function textDump(state: SimState): string {
   }
 
   lines.push('entities:')
-  const sorted = [...state.entities].sort((a, b) => a.id - b.id)
-  if (sorted.length === 0) {
+  // state.entities is always already in ascending id order (addEntity appends, removeEntity
+  // filters, neither reorders), so no sort is needed here.
+  if (state.entities.length === 0) {
     lines.push('  (none)')
   } else {
-    sorted.forEach((entity, index) => {
+    state.entities.forEach((entity, index) => {
       const moveTarget =
         entity.moveTarget === null ? 'none' : `(${entity.moveTarget.x},${entity.moveTarget.y})`
       const held = entity.held === null ? 'none' : entity.held

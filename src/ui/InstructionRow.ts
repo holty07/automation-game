@@ -13,6 +13,7 @@ const OPCODE_LABELS: Record<string, string> = {
   REPEAT_UNTIL: 'Repeat until',
   IF: 'If',
   WAIT: 'Wait',
+  CALL: 'Call routine',
 }
 
 /** Entity types a bot might sensibly aim a target at — everything but the actors themselves. */
@@ -46,6 +47,7 @@ export interface InstructionRowCallbacks {
   onRepeatParamsChange(id: string, params: RepeatParams): void
   onConditionChange(id: string, condition: Condition): void
   onWaitTicksChange(id: string, ticks: number): void
+  onRoutineIdChange(id: string, routineId: string): void
   onMove(sourceId: string, targetId: string, position: DropPosition): void
 }
 
@@ -310,6 +312,8 @@ export function createInstructionRow(row: FlatRow, highlighted: boolean, callbac
     element.append(createConditionEditor(instruction.condition, (condition) => callbacks.onConditionChange(instruction.id, condition)))
   } else if (instruction.op === 'WAIT') {
     element.append(createNumberInput(instruction.waitTicks ?? 20, 'wait ticks', (ticks) => callbacks.onWaitTicksChange(instruction.id, ticks)))
+  } else if (instruction.op === 'CALL') {
+    element.append(createTextInput(instruction.routineId ?? '', 'routine id', (routineId) => callbacks.onRoutineIdChange(instruction.id, routineId)))
   } else {
     const ref = instruction.args[0]
     if (ref !== undefined) {

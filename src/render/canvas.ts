@@ -48,8 +48,9 @@ export function render(
     }
   }
 
-  const sorted = [...state.entities].sort((a, b) => a.id - b.id)
-  for (const entity of sorted) {
+  // state.entities is always already in ascending id order (addEntity appends, removeEntity
+  // filters, neither reorders), so no sort is needed on this hot per-frame path.
+  for (const entity of state.entities) {
     const { x, y } = interpolatedPos(entity, alpha)
     const screen = tileToScreen(camera, followX, followY, x, y)
     drawEntity(ctx, entity.type, screen.x, screen.y, camera.tileSize)

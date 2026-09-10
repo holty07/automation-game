@@ -11,7 +11,9 @@ function manhattan(a: TileRef, b: TileRef): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
 }
 
-/** Nearest entity of `entityType` to `from`, ties broken by lowest id. Entities are visited in id order. */
+/** Nearest entity of `entityType` to `from`, ties broken by lowest id. `state.entities` is always in
+ * ascending id order already — addEntity appends and removeEntity filters, neither ever reorders —
+ * so this needs no sort of its own. */
 function findNearest(
   state: SimState,
   from: TileRef,
@@ -20,8 +22,7 @@ function findNearest(
 ): Entity | null {
   let best: Entity | null = null
   let bestDistance = Infinity
-  const sorted = [...state.entities].sort((a, b) => a.id - b.id)
-  for (const entity of sorted) {
+  for (const entity of state.entities) {
     if (entity.type !== entityType || !isEligible(entity)) {
       continue
     }
