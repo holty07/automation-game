@@ -1,8 +1,8 @@
 import type { EntityId, ItemKind, SimState, TileRef } from '../sim/types'
 import type { ActionRequest } from '../sim/actions'
-import { executeAction } from '../sim/actions'
 import { isItemKind, ITEM_KINDS } from '../sim/entities'
 import { findPathAdjacentTo } from '../sim/pathfind'
+import type { Recorder } from '../sim/recorder'
 import { entitiesAt, getEntity, inBounds } from '../sim/world'
 import type { Camera } from '../render/camera'
 import { screenToTile } from '../render/camera'
@@ -45,6 +45,7 @@ export function createControls(
   camera: Camera,
   playerId: EntityId,
   toolbar: Toolbar,
+  recorder: Recorder,
 ): Controls {
   const pressed = new Set<string>()
   /** An action queued to fire once the player finishes walking to it (a click on a distant target). */
@@ -68,10 +69,10 @@ export function createControls(
     }
     if (player.pos.x === destination.x && player.pos.y === destination.y) {
       pendingIntent = null
-      executeAction(state, playerId, intent)
+      recorder.perform(state, playerId, intent)
       return
     }
-    const moveResult = executeAction(state, playerId, { op: 'MOVE_TO', target: destination })
+    const moveResult = recorder.perform(state, playerId, { op: 'MOVE_TO', target: destination })
     // Only queue the follow-up if the walk actually started — otherwise it would fire
     // next frame from the player's current (wrong) position.
     pendingIntent = moveResult.ok ? intent : null
@@ -160,7 +161,7 @@ export function createControls(
     }
 
     pendingIntent = null
-    executeAction(state, playerId, { op: 'MOVE_TO', target: tile })
+    recorder.perform(state, playerId, { op: 'MOVE_TO', target: tile })
   }
 
   window.addEventListener('keydown', onKeyDown)
@@ -174,7 +175,7 @@ export function createControls(
         if (player !== undefined && player.moveTarget === null && player.path.length === 0) {
           const intent = pendingIntent
           pendingIntent = null
-          executeAction(state, playerId, intent)
+          recorder.perform(state, playerId, intent)
         }
       }
 
@@ -201,7 +202,7 @@ export function createControls(
         return
       }
       pendingIntent = null
-      executeAction(state, playerId, { op: 'MOVE_TO', target: { x: player.pos.x + dx, y: player.pos.y + dy } })
+      recorder.perform(state, playerId, { op: 'MOVE_TO', target: { x: player.pos.x + dx, y: player.pos.y + dy } })
     },
     destroy(): void {
       window.removeEventListener('keydown', onKeyDown)

@@ -1,5 +1,7 @@
-import { createGroundItem, getActionCost, isItemKind, RESOURCE_YIELD } from './entities'
+import { createBotRuntime } from './botRuntime'
+import { createGroundItem, getActionCost, isItemKind, RESOURCE_YIELD, staticEntity } from './entities'
 import { BENCH_SAW_RECIPE, createBenchSaw, createStockpile } from './machines'
+import type { Program } from './program'
 import type { Entity, EntityId, ItemKind, SimState, TileRef } from './types'
 import { addEntity, entitiesAt, getEntity, inBounds, isWalkable, removeEntity } from './world'
 import { findPath, isAdjacent } from './pathfind'
@@ -15,6 +17,7 @@ export type ActionRequest =
   | { op: 'GIVE_TO'; target: EntityId }
   | { op: 'TAKE_FROM'; target: EntityId; item: ItemKind }
   | { op: 'BUILD'; kind: BuildableType; target: TileRef }
+  | { op: 'DEPLOY_BOT'; program: Program }
 
 export interface ActionResult {
   ok: boolean
@@ -184,6 +187,14 @@ function build(state: SimState, actor: Entity, kind: BuildableType, target: Tile
   return { ok: true, producedEntityId }
 }
 
+/** Spawns a bot at the actor's own position and assigns it the finished program, already running. */
+function deployBot(state: SimState, actor: Entity, program: Program): ActionResult {
+  state.programs[program.id] = program
+  const botId = addEntity(state, staticEntity('bot', actor.pos))
+  state.botRuntimes[botId] = createBotRuntime(program.id, program)
+  return { ok: true, producedEntityId: botId }
+}
+
 /**
  * The only function that mutates the world. Every action a player or bot takes flows through here.
  * (vm.ts writes directly to a bot's own entry in `SimState.botRuntimes` — that's VM-internal program
@@ -213,5 +224,7 @@ export function executeAction(state: SimState, actorId: EntityId, request: Actio
       return takeFrom(state, actor, request.target, request.item)
     case 'BUILD':
       return build(state, actor, request.kind, request.target)
+    case 'DEPLOY_BOT':
+      return deployBot(state, actor, request.program)
   }
 }
