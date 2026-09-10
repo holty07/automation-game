@@ -376,6 +376,7 @@ Each milestone ends in something playable and has a single testable acceptance c
 | **M7** | Control flow & generalise | `REPEAT`, `REPEAT_UNTIL`, `IF`/`ELSE`, `WAIT`, the generalise pass, failure policies | A recorded 6-step routine, auto-generalised, runs indefinitely with no player intervention |
 | **M8** | Scale | Multiple bots, program library, copy-to-bot, bot tiers, save/load, Playwright smoke test | 10 bots run different programs at 60fps; save and reload is byte-identical |
 | **M9** | Game | Farming chain, bot crafting costs, tutorial prompts, itch.io build | A new player reaches their first working bot within 10 minutes unaided |
+| **M10** | Blueprints | Blueprint entity, resource-gated `BUILD`, bots deliver materials via existing `GIVE_TO` | A test drives `executeAction` through `BUILD` → partial `GIVE_TO` → completing `GIVE_TO` and asserts the blueprint becomes its finished building with cost deducted; a bot on a `REPEAT forever` delivery routine finishes an untouched blueprint unattended |
 
 **M4 before M5 is deliberate.** Build the machine that runs programs before the machine that writes them. Building recording first means debugging two unproven systems against each other.
 

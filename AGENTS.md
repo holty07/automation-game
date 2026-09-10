@@ -86,3 +86,4 @@ later milestone. If you think a later milestone's work is needed now, stop and a
 | M7 | Control flow, the generalise pass, failure policies |
 | M8 | Multiple bots, program library, bot tiers, save/load |
 | M9 | Farming chain, progression, tutorial, itch.io build |
+| M10 | Blueprints: resource-gated construction, bots taught to deliver materials |
