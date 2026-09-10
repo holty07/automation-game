@@ -1,9 +1,10 @@
 import { executeAction } from '../sim/actions'
-import type { Instruction, Program } from '../sim/program'
-import { countScriptInstructions, instructionCap } from '../sim/program'
+import type { BotTier, Instruction, Program } from '../sim/program'
+import { countScriptInstructions, instructionCap, isOpcodeAvailable } from '../sim/program'
 import type { EntityId, SimState } from '../sim/types'
 import type { FailurePolicy } from '../sim/vm'
 import { currentInstructionId } from '../sim/vm'
+import { createBotControls } from './BotControls'
 import type { InstructionRowCallbacks } from './InstructionRow'
 import { createInstructionRow } from './InstructionRow'
 import {
@@ -16,8 +17,9 @@ import {
 } from './instructionTree'
 
 /** Opcodes the "Add instruction" control can insert — the ones a player adds deliberately rather
- * than by recording (WAIT is never recorded; REPEAT/REPEAT_UNTIL/IF are structure the player builds). */
-const ADDABLE_OPCODES = ['WAIT', 'IF', 'REPEAT_UNTIL', 'REPEAT'] as const
+ * than by recording (WAIT is never recorded; REPEAT/REPEAT_UNTIL/IF/CALL are structure the player
+ * builds). Each render() filters this down to whatever the open bot's tier actually unlocks. */
+const ADDABLE_OPCODES = ['WAIT', 'IF', 'REPEAT_UNTIL', 'REPEAT', 'CALL'] as const
 type AddableOpcode = (typeof ADDABLE_OPCODES)[number]
 
 const FAILURE_POLICIES: readonly FailurePolicy[] = ['wait', 'skip', 'halt']
@@ -32,6 +34,8 @@ function defaultInstruction(op: AddableOpcode, id: string): Instruction {
       return { id, op: 'REPEAT_UNTIL', args: [], condition: { type: 'NOT_HOLDING' }, children: [] }
     case 'REPEAT':
       return { id, op: 'REPEAT', args: [], params: { mode: 'forever' }, children: [] }
+    case 'CALL':
+      return { id, op: 'CALL', args: [], routineId: '' }
   }
 }
 
@@ -44,13 +48,12 @@ export interface ScriptEditor {
   destroy(): void
 }
 
-/** Bot tiers arrive in M8; until then every bot is treated as mk1 for the instruction cap. */
-const CURRENT_TIER = 'mk1'
-
 export function createScriptEditor(container: HTMLElement, state: SimState): ScriptEditor {
   let openBotId: EntityId | null = null
   let duplicateCounter = 0
   let addedCounter = 0
+  let routineCounter = 0
+  let assignedProgramCounter = 0
 
   const panel = document.createElement('div')
   panel.className = 'script-editor'
@@ -89,6 +92,49 @@ export function createScriptEditor(container: HTMLElement, state: SimState): Scr
   closeButton.addEventListener('click', () => close())
   header.append(title, statusLine, failurePolicySelect, closeButton)
 
+  const botControls = createBotControls(panel, {
+    onTierChange(tier) {
+      if (openBotId === null) {
+        return
+      }
+      executeAction(state, openBotId, { op: 'SET_BOT_TIER', botId: openBotId, tier })
+      render()
+    },
+    onSaveRoutine(name) {
+      if (openBotId === null) {
+        return
+      }
+      routineCounter += 1
+      executeAction(state, openBotId, { op: 'SAVE_ROUTINE', botId: openBotId, routineId: `routine-${routineCounter}`, name })
+      render()
+    },
+    onAssignRoutine(routineId) {
+      if (openBotId === null) {
+        return
+      }
+      assignedProgramCounter += 1
+      executeAction(state, openBotId, {
+        op: 'ASSIGN_ROUTINE',
+        botId: openBotId,
+        routineId,
+        programId: `assigned-${assignedProgramCounter}`,
+      })
+      render()
+    },
+    onCopyProgram(toBotId) {
+      if (openBotId === null) {
+        return
+      }
+      assignedProgramCounter += 1
+      executeAction(state, openBotId, {
+        op: 'COPY_PROGRAM',
+        fromBotId: openBotId,
+        toBotId,
+        programId: `copied-${assignedProgramCounter}`,
+      })
+    },
+  })
+
   const counter = document.createElement('div')
   counter.className = 'instruction-counter'
   panel.append(counter)
@@ -101,12 +147,6 @@ export function createScriptEditor(container: HTMLElement, state: SimState): Scr
   addRow.className = 'add-instruction-row'
   const addSelect = document.createElement('select')
   addSelect.setAttribute('aria-label', 'new instruction opcode')
-  for (const op of ADDABLE_OPCODES) {
-    const option = document.createElement('option')
-    option.value = op
-    option.textContent = op
-    addSelect.append(option)
-  }
   const addButton = document.createElement('button')
   addButton.textContent = 'Add instruction'
   addButton.addEventListener('click', () => {
@@ -147,9 +187,9 @@ export function createScriptEditor(container: HTMLElement, state: SimState): Scr
     }
   }
 
-  function instructionCounterText(program: Program): { text: string; overCap: boolean } {
+  function instructionCounterText(program: Program, tier: BotTier): { text: string; overCap: boolean } {
     const count = countScriptInstructions(program)
-    const cap = instructionCap(CURRENT_TIER)
+    const cap = instructionCap(tier)
     return { text: `${count} / ${cap} instructions`, overCap: count > cap }
   }
 
@@ -180,6 +220,9 @@ export function createScriptEditor(container: HTMLElement, state: SimState): Scr
     onWaitTicksChange(id, ticks) {
       withProgram((instructions) => updateInstruction(instructions, id, (instruction) => ({ ...instruction, waitTicks: ticks })))
     },
+    onRoutineIdChange(id, routineId) {
+      withProgram((instructions) => updateInstruction(instructions, id, (instruction) => ({ ...instruction, routineId })))
+    },
     onMove(sourceId, targetId, position) {
       withProgram((instructions) => moveInstruction(instructions, sourceId, targetId, position))
     },
@@ -204,9 +247,20 @@ export function createScriptEditor(container: HTMLElement, state: SimState): Scr
     title.textContent = `Bot ${openBotId} — ${program.name}`
     failurePolicySelect.value = runtime.failurePolicy
 
-    const { text, overCap } = instructionCounterText(program)
+    const { text, overCap } = instructionCounterText(program, runtime.tier)
     counter.textContent = text
     counter.classList.toggle('over-cap', overCap)
+
+    addSelect.textContent = ''
+    for (const op of ADDABLE_OPCODES.filter((candidate) => isOpcodeAvailable(candidate, runtime.tier))) {
+      const option = document.createElement('option')
+      option.value = op
+      option.textContent = op
+      addSelect.append(option)
+    }
+
+    const otherBotIds = state.entities.filter((entity) => entity.type === 'bot' && entity.id !== openBotId).map((entity) => entity.id)
+    botControls.render(runtime.tier, Object.values(state.routines), otherBotIds)
 
     list.textContent = ''
     const activeId = currentInstructionId(runtime)
@@ -241,6 +295,7 @@ export function createScriptEditor(container: HTMLElement, state: SimState): Scr
         runtime.blockedReason === undefined ? runtime.status : `${runtime.status} — ${runtime.blockedReason}`
     },
     destroy(): void {
+      botControls.destroy()
       panel.remove()
     },
   }

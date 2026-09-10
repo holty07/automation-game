@@ -46,6 +46,10 @@ function targetTileFor(state: SimState, request: ActionRequest): TileRef | null 
       return null
     case 'EDIT_PROGRAM':
     case 'SET_FAILURE_POLICY':
+    case 'SET_BOT_TIER':
+    case 'SAVE_ROUTINE':
+    case 'ASSIGN_ROUTINE':
+    case 'COPY_PROGRAM':
       // Editor edits, not player actions — never recordable.
       return null
   }
@@ -84,6 +88,10 @@ function toInstruction(id: string, request: ActionRequest, tile: TileRef): Instr
     case 'DEPLOY_BOT':
     case 'EDIT_PROGRAM':
     case 'SET_FAILURE_POLICY':
+    case 'SET_BOT_TIER':
+    case 'SAVE_ROUTINE':
+    case 'ASSIGN_ROUTINE':
+    case 'COPY_PROGRAM':
       return null
   }
 }

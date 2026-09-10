@@ -336,6 +336,140 @@ describe('bot VM', () => {
     expect(getEntity(state, botId)?.pos).toEqual({ x: 3, y: 0 })
   })
 
+  it('CALL runs a saved routine inline, resuming the caller once it completes', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    state.routines['r1'] = {
+      id: 'r1',
+      name: 'step right',
+      version: 1,
+      instructions: [{ id: 'step', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 1, y: 0 } }] }],
+    }
+    const program: Program = {
+      id: 'p',
+      name: 'calls a routine then continues',
+      version: 1,
+      instructions: [
+        { id: '1', op: 'CALL', args: [], routineId: 'r1' },
+        { id: '2', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 2, y: 0 } }] },
+      ],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+    runTicks(state, 40)
+
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 2, y: 0 })
+    expect(state.botRuntimes[botId]?.status).toBe('halted')
+  })
+
+  it('CALL picks up a live edit to the routine, since it looks it up fresh each time', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    state.routines['r1'] = {
+      id: 'r1',
+      name: 'go right',
+      version: 1,
+      instructions: [{ id: 'step', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 1, y: 0 } }] }],
+    }
+    const program: Program = {
+      id: 'p',
+      name: 'loops a routine forever',
+      version: 1,
+      instructions: [
+        {
+          id: 'outer',
+          op: 'REPEAT',
+          args: [],
+          params: { mode: 'forever' },
+          children: [{ id: '1', op: 'CALL', args: [], routineId: 'r1' }],
+        },
+      ],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+    runTicks(state, 20)
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 1, y: 0 })
+
+    const routine = state.routines['r1']
+    if (routine === undefined) {
+      throw new Error('routine missing')
+    }
+    routine.instructions = [{ id: 'step', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 2, y: 0 } }] }]
+
+    runTicks(state, 20)
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 2, y: 0 })
+  })
+
+  it('fails cleanly (never throws) when CALL names a routine that does not exist', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    const program: Program = {
+      id: 'p',
+      name: 'calls nothing',
+      version: 1,
+      instructions: [{ id: '1', op: 'CALL', args: [], routineId: 'missing' }],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program, 'halt')
+
+    expect(() => runTicks(state, 5)).not.toThrow()
+    expect(state.botRuntimes[botId]?.status).toBe('halted')
+    expect(state.botRuntimes[botId]?.blockedReason).toBe('unknown routine')
+  })
+
+  it('a self-recursive CALL fails cleanly under the recursion depth limit, never throwing or hanging', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    state.routines['recurse'] = {
+      id: 'recurse',
+      name: 'calls itself',
+      version: 1,
+      instructions: [{ id: '1', op: 'CALL', args: [], routineId: 'recurse' }],
+    }
+    const program: Program = {
+      id: 'p',
+      name: 'kicks off the recursion',
+      version: 1,
+      instructions: [{ id: '1', op: 'CALL', args: [], routineId: 'recurse' }],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program, 'halt')
+
+    expect(() => tick(state)).not.toThrow()
+
+    const runtime = state.botRuntimes[botId]
+    expect(runtime?.status).toBe('halted')
+    expect(runtime?.blockedReason).toBe('routine call stack too deep')
+  })
+
+  it('a CALL nested under deep (non-CALL) IF nesting is not mistaken for deep recursion', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    state.routines['r1'] = {
+      id: 'r1',
+      name: 'step right',
+      version: 1,
+      instructions: [{ id: 'step', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 1, y: 0 } }] }],
+    }
+    // 35 levels of plain IF nesting — more than MAX_CALL_DEPTH, but none of them are CALL — wrapped
+    // around a single, non-recursive CALL at the bottom. Only routine recursion should ever count
+    // against the call-depth limit, so this CALL must still succeed.
+    let innermost: Instruction = { id: 'call', op: 'CALL', args: [], routineId: 'r1' }
+    for (let depth = 0; depth < 35; depth += 1) {
+      innermost = { id: `if-${depth}`, op: 'IF', args: [], condition: { type: 'NOT_HOLDING' }, children: [innermost] }
+    }
+    const program: Program = { id: 'p', name: 'CALL under deep IF nesting', version: 1, instructions: [innermost] }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program, 'halt')
+
+    expect(() => runTicks(state, 20)).not.toThrow()
+
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 1, y: 0 })
+    expect(state.botRuntimes[botId]?.blockedReason).not.toBe('routine call stack too deep')
+  })
+
   it('fails cleanly (never throws) when TAKE_FROM targets an empty container', () => {
     const state = createWorld(6, 6, 1)
     const botId = addBot(state, 1, 1)

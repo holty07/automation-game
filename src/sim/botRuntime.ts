@@ -1,4 +1,4 @@
-import type { Condition, Instruction, Opcode, Program } from './program'
+import type { BotTier, Condition, Instruction, Opcode, Program } from './program'
 import type { ResolvedTarget } from './targeting'
 import type { EntityId, TileRef } from './types'
 
@@ -11,6 +11,10 @@ export interface Frame {
   /** REPEAT_UNTIL only: re-checked each time this frame runs off the end of its instructions —
    * true pops the frame, false loops again. Takes priority over iterationsLeft when present. */
   untilCondition?: Condition
+  /** True only for a frame CALL pushed to run a routine. Distinguishes routine recursion depth
+   * from ordinary REPEAT/IF nesting, which shares the same frame stack but should never trip the
+   * recursion depth limit on its own. */
+  fromCall?: boolean
 }
 
 export type FailurePolicy = 'wait' | 'skip' | 'halt'
@@ -27,6 +31,8 @@ export type BotStatus = 'running' | 'blocked' | 'halted'
 
 export interface BotRuntime {
   programId: string
+  /** Gates instruction cap and opcode availability (validate() in program.ts); CALL only runs at mk4. */
+  tier: BotTier
   frames: Frame[]
   currentAction: CurrentAction | null
   status: BotStatus
@@ -42,9 +48,15 @@ export interface BotRuntime {
  * Kept in its own leaf module, separate from vm.ts, so actions.ts's `DEPLOY_BOT` handler can build a
  * BotRuntime without importing the interpreter itself (which imports actions.ts for executeAction).
  */
-export function createBotRuntime(programId: string, program: Program, failurePolicy: FailurePolicy = 'wait'): BotRuntime {
+export function createBotRuntime(
+  programId: string,
+  program: Program,
+  failurePolicy: FailurePolicy = 'wait',
+  tier: BotTier = 'mk1',
+): BotRuntime {
   return {
     programId,
+    tier,
     frames: [{ instructions: program.instructions, index: 0, iterationsLeft: 1 }],
     currentAction: null,
     status: 'running',

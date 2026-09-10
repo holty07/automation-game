@@ -35,7 +35,8 @@ export function createBotList(container: HTMLElement, state: SimState, onSelect:
   }
 
   function refresh(): void {
-    const bots = state.entities.filter((entity) => entity.type === 'bot').sort((a, b) => a.id - b.id)
+    // state.entities is always already in ascending id order, so filtering alone preserves it.
+    const bots = state.entities.filter((entity) => entity.type === 'bot')
     const liveIds = new Set(bots.map((bot) => bot.id))
     for (const [id, row] of rows) {
       if (!liveIds.has(id)) {

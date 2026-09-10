@@ -30,10 +30,11 @@ export function createBenchSaw(pos: TileRef): EntityData {
   return { ...staticEntity('benchSaw', pos), storage: {} }
 }
 
-/** Finishes any bench saw whose recipe time has elapsed, moving its output into its store. */
+/** Finishes any bench saw whose recipe time has elapsed, moving its output into its store.
+ * `state.entities` is always already in ascending id order, so no sort is needed here — this
+ * runs every tick, for every entity. */
 export function stepMachines(state: SimState): void {
-  const sorted = [...state.entities].sort((a, b) => a.id - b.id)
-  for (const entity of sorted) {
+  for (const entity of state.entities) {
     if (entity.type !== 'benchSaw' || entity.craftingUntilTick === null) {
       continue
     }

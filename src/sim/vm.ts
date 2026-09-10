@@ -20,6 +20,12 @@ const RETRY_TICKS = 20
  * REPEAT loop blocks the bot instead of hanging the tick forever. */
 const CONTROL_FLOW_GUARD = 10000
 
+/** Bounds how many routine CALLs may be nested on the bot's frame stack at once, so a self- or
+ * mutually-recursive CALL fails cleanly under the failure policy instead of growing the frame
+ * stack without bound. Counts only CALL-pushed frames (Frame.fromCall), not ordinary REPEAT/IF
+ * nesting sharing the same stack, so a legitimately deep but non-recursive program never trips it. */
+const MAX_CALL_DEPTH = 32
+
 function toDisplayTarget(resolved: ResolvedTarget): EntityId | TileRef | null {
   switch (resolved.kind) {
     case 'entity':
@@ -99,8 +105,9 @@ function buildRequest(
     case 'REPEAT_UNTIL':
     case 'IF':
     case 'WAIT':
-      // Control flow (REPEAT/REPEAT_UNTIL/IF) and WAIT are handled directly in stepBot's loop —
-      // they never reach buildRequest, which only builds requests for target-bearing actions.
+    case 'CALL':
+      // Control flow (REPEAT/REPEAT_UNTIL/IF/CALL) and WAIT are handled directly in stepBot's
+      // loop — they never reach buildRequest, which only builds requests for target-bearing actions.
       return { reason: `${instruction.op} cannot be executed as an action` }
   }
 }
@@ -253,6 +260,28 @@ function stepBot(state: SimState, botId: EntityId, runtime: BotRuntime): void {
       if (branch !== undefined && branch.length > 0) {
         runtime.frames.push({ instructions: branch, index: 0, iterationsLeft: 1 })
       }
+      continue
+    }
+
+    if (instruction.op === 'CALL') {
+      const routine = instruction.routineId === undefined ? undefined : state.routines[instruction.routineId]
+      if (routine === undefined) {
+        applyFailurePolicy(runtime, frame, 'unknown routine', state.tick)
+        if (runtime.failurePolicy === 'skip') {
+          continue
+        }
+        return
+      }
+      const callDepth = runtime.frames.filter((f) => f.fromCall === true).length
+      if (callDepth >= MAX_CALL_DEPTH) {
+        applyFailurePolicy(runtime, frame, 'routine call stack too deep', state.tick)
+        if (runtime.failurePolicy === 'skip') {
+          continue
+        }
+        return
+      }
+      frame.index += 1
+      runtime.frames.push({ instructions: routine.instructions, index: 0, iterationsLeft: 1, fromCall: true })
       continue
     }
 

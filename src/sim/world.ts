@@ -22,6 +22,7 @@ export function createWorld(width: number, height: number, seed: number): SimSta
     areas: {},
     markers: {},
     programs: {},
+    routines: {},
     botRuntimes: {},
   }
 }

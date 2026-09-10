@@ -40,10 +40,11 @@ function stepEntity(state: SimState, entity: Entity): void {
   }
 }
 
-/** Advances every entity one movement tick towards its move target, in stable id order. */
+/** Advances every entity one movement tick towards its move target, in stable id order.
+ * `state.entities` is always already in ascending id order (addEntity appends, removeEntity
+ * filters), so no sort is needed here — this runs every tick, for every entity. */
 export function stepMovement(state: SimState): void {
-  const sorted = [...state.entities].sort((a, b) => a.id - b.id)
-  for (const entity of sorted) {
+  for (const entity of state.entities) {
     stepEntity(state, entity)
   }
 }

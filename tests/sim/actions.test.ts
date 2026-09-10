@@ -3,7 +3,7 @@ import { addBenchSaw, addBot, addGroundItem, addPlayer, addRock, addStockpile, a
 import { executeAction } from '../../src/sim/actions'
 import { BENCH_SAW_RECIPE, CONTAINER_CAPACITY } from '../../src/sim/machines'
 import { createBotRuntime } from '../../src/sim/vm'
-import type { Program } from '../../src/sim/program'
+import type { Instruction, Program } from '../../src/sim/program'
 
 describe('executeAction', () => {
   it('rejects an unknown actor', () => {
@@ -480,6 +480,7 @@ describe('executeAction', () => {
       state.programs[program.id] = program
       state.botRuntimes[botId] = {
         programId: program.id,
+        tier: 'mk1',
         frames: [{ instructions: [], index: 0, iterationsLeft: 1 }],
         currentAction: null,
         status: 'running',
@@ -530,6 +531,120 @@ describe('executeAction', () => {
       expect(state.programs[program.id]).toBe(program)
       expect(state.botRuntimes[botId ?? -1]?.status).toBe('running')
       expect(state.botRuntimes[botId ?? -1]?.programId).toBe(program.id)
+    })
+  })
+
+  describe('SET_BOT_TIER', () => {
+    it('sets a bot’s tier', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+      const program: Program = { id: 'p', name: 'p', version: 1, instructions: [] }
+      state.programs[program.id] = program
+      state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+      const result = executeAction(state, botId, { op: 'SET_BOT_TIER', botId, tier: 'mk4' })
+
+      expect(result).toEqual({ ok: true })
+      expect(state.botRuntimes[botId]?.tier).toBe('mk4')
+    })
+
+    it('rejects setting the tier of a bot with no program assigned', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+
+      const result = executeAction(state, botId, { op: 'SET_BOT_TIER', botId, tier: 'mk2' })
+
+      expect(result).toEqual({ ok: false, reason: 'bot has no program assigned' })
+    })
+  })
+
+  describe('SAVE_ROUTINE', () => {
+    it('snapshots a bot’s current program into the routine library', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+      const instructions: Instruction[] = [{ id: '1', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 1, y: 1 } }] }]
+      const program: Program = { id: 'p', name: 'p', version: 1, instructions }
+      state.programs[program.id] = program
+      state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+      const result = executeAction(state, botId, { op: 'SAVE_ROUTINE', botId, routineId: 'r1', name: 'My routine' })
+
+      expect(result).toEqual({ ok: true })
+      expect(state.routines['r1']).toEqual({ id: 'r1', name: 'My routine', instructions, version: 1 })
+    })
+
+    it('rejects saving a routine from a bot with no program assigned', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+
+      const result = executeAction(state, botId, { op: 'SAVE_ROUTINE', botId, routineId: 'r1', name: 'x' })
+
+      expect(result).toEqual({ ok: false, reason: 'bot has no program assigned' })
+    })
+  })
+
+  describe('ASSIGN_ROUTINE', () => {
+    it('assigns a saved routine to a bot as a fresh program, resetting its frame stack', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+      const oldProgram: Program = { id: 'old', name: 'old', version: 1, instructions: [] }
+      state.programs[oldProgram.id] = oldProgram
+      state.botRuntimes[botId] = createBotRuntime(oldProgram.id, oldProgram)
+      const routineInstructions: Instruction[] = [{ id: '1', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 3, y: 3 } }] }]
+      state.routines['r1'] = { id: 'r1', name: 'Routine', instructions: routineInstructions, version: 1 }
+
+      const result = executeAction(state, botId, { op: 'ASSIGN_ROUTINE', botId, routineId: 'r1', programId: 'new' })
+
+      expect(result).toEqual({ ok: true })
+      expect(state.botRuntimes[botId]?.programId).toBe('new')
+      expect(state.programs['new']).toEqual({ id: 'new', name: 'Routine', instructions: routineInstructions, version: 1 })
+      expect(state.botRuntimes[botId]?.frames).toEqual([{ instructions: routineInstructions, index: 0, iterationsLeft: 1 }])
+      // Independent of the routine's own instructions from here on.
+      expect(state.programs['new']?.instructions).not.toBe(state.routines['r1']?.instructions)
+    })
+
+    it('rejects assigning an unknown routine', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+      const program: Program = { id: 'p', name: 'p', version: 1, instructions: [] }
+      state.programs[program.id] = program
+      state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+      const result = executeAction(state, botId, { op: 'ASSIGN_ROUTINE', botId, routineId: 'missing', programId: 'new' })
+
+      expect(result).toEqual({ ok: false, reason: 'unknown routine' })
+    })
+  })
+
+  describe('COPY_PROGRAM', () => {
+    it('copies one bot’s program to another as a fresh, independent program instance', () => {
+      const state = createWorld(5, 5, 1)
+      const fromBotId = addBot(state, 0, 0)
+      const toBotId = addBot(state, 1, 0)
+      const instructions: Instruction[] = [{ id: '1', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 2, y: 2 } }] }]
+      const sourceProgram: Program = { id: 'source', name: 'source', version: 1, instructions }
+      const targetProgram: Program = { id: 'target', name: 'target', version: 1, instructions: [] }
+      state.programs[sourceProgram.id] = sourceProgram
+      state.programs[targetProgram.id] = targetProgram
+      state.botRuntimes[fromBotId] = createBotRuntime(sourceProgram.id, sourceProgram)
+      state.botRuntimes[toBotId] = createBotRuntime(targetProgram.id, targetProgram)
+
+      const result = executeAction(state, fromBotId, { op: 'COPY_PROGRAM', fromBotId, toBotId, programId: 'copied' })
+
+      expect(result).toEqual({ ok: true })
+      expect(state.botRuntimes[toBotId]?.programId).toBe('copied')
+      expect(state.programs['copied']).toEqual({ id: 'copied', name: 'source', instructions, version: 1 })
+      expect(state.programs['copied']?.instructions).not.toBe(sourceProgram.instructions)
+    })
+
+    it('rejects copying when either bot has no program assigned', () => {
+      const state = createWorld(5, 5, 1)
+      const fromBotId = addBot(state, 0, 0)
+      const toBotId = addBot(state, 1, 0)
+
+      const result = executeAction(state, fromBotId, { op: 'COPY_PROGRAM', fromBotId, toBotId, programId: 'copied' })
+
+      expect(result).toEqual({ ok: false, reason: 'both bots must have a program assigned' })
     })
   })
 })
