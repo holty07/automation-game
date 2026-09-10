@@ -7,6 +7,31 @@
     <style>
       html, body { margin: 0; height: 100%; background: #111; color: #eee; font-family: sans-serif; }
       #game { display: block; image-rendering: pixelated; background: #000; }
+
+      .bot-list { position: fixed; left: 0; top: 40px; width: 160px; background: #1b1b1b; padding: 8px; box-sizing: border-box; }
+      .bot-list-row { display: block; width: 100%; text-align: left; margin-bottom: 4px; }
+      .bot-list-row.selected { outline: 2px solid #5af; }
+
+      .script-editor {
+        position: fixed; right: 0; top: 0; bottom: 0; width: 420px; overflow-y: auto; overflow-x: hidden;
+        background: #1b1b1b; padding: 8px; box-sizing: border-box; font-size: 13px;
+      }
+      .script-editor-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+      .instruction-counter { margin-bottom: 8px; }
+      .instruction-counter.over-cap { color: #f55; }
+      .instruction-row {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 0;
+        border-top: 2px solid transparent; border-bottom: 2px solid transparent;
+      }
+      .instruction-row-active { background: #274; }
+      .instruction-row.drop-before { border-top-color: #5af; }
+      .instruction-row.drop-after { border-bottom-color: #5af; }
+      .instruction-row.drop-into { outline: 2px dashed #fa5; }
+      .drag-handle { cursor: grab; opacity: 0.6; }
+      .arg-editor { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+      .arg-editor select { max-width: 8em; }
+      .arg-editor input[type="number"] { width: 3.5em; }
+      .instruction-row button { flex-shrink: 0; }
     </style>
   </head>
   <body>

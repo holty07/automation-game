@@ -6,6 +6,8 @@ import { createCamera } from './render/camera'
 import { render } from './render/canvas'
 import { createControls } from './input/controls'
 import { createToolbar } from './ui/Toolbar'
+import { createBotList } from './ui/BotList'
+import { createScriptEditor } from './ui/ScriptEditor'
 
 const WORLD_SIZE = 64
 const TILE_SIZE = 32
@@ -50,9 +52,13 @@ const camera = createCamera(TILE_SIZE, canvas.width, canvas.height)
 const recorder = createRecorder()
 const toolbar = createToolbar(ui, state, playerId, recorder)
 const controls = createControls(canvas, state, camera, playerId, toolbar, recorder)
+const scriptEditor = createScriptEditor(ui, state)
+const botList = createBotList(ui, state, (botId) => scriptEditor.open(botId))
 
 createLoop(state, (currentState, alpha) => {
   controls.update()
   toolbar.update()
+  botList.update()
+  scriptEditor.update()
   render(ctx, currentState, camera, playerId, alpha)
 })

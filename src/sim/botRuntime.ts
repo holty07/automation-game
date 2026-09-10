@@ -16,6 +16,8 @@ export interface CurrentAction {
   op: Opcode
   resolvedTarget: EntityId | TileRef | null
   ticksRemaining: number
+  /** The instruction this action came from — the editor's live execution highlight. */
+  instructionId: string
 }
 
 export type BotStatus = 'running' | 'blocked' | 'halted'
@@ -47,4 +49,20 @@ export function createBotRuntime(programId: string, program: Program, failurePol
     lastResult: null,
     blockedRetryAt: 0,
   }
+}
+
+/**
+ * The instruction id the editor should highlight: whatever action is currently in flight, or
+ * failing that the next instruction the top frame is about to run. Null once a frame has run
+ * off the end of its instruction list (about to loop or pop) or the call stack is empty.
+ */
+export function currentInstructionId(runtime: BotRuntime): string | null {
+  if (runtime.currentAction !== null) {
+    return runtime.currentAction.instructionId
+  }
+  const frame = runtime.frames[runtime.frames.length - 1]
+  if (frame === undefined) {
+    return null
+  }
+  return frame.instructions[frame.index]?.id ?? null
 }

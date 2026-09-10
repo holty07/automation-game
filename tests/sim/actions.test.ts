@@ -371,6 +371,82 @@ describe('executeAction', () => {
     })
   })
 
+  describe('EDIT_PROGRAM', () => {
+    it('replaces the instructions and resets the frame stack, so an edit takes effect immediately', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const program = {
+        id: 'recorded-1',
+        name: 'Recorded 1',
+        version: 1,
+        instructions: [{ id: '1', op: 'MOVE_TO' as const, args: [{ mode: 'absolute' as const, tile: { x: 1, y: 1 } }] }],
+      }
+      const deployResult = executeAction(state, playerId, { op: 'DEPLOY_BOT', program })
+      const botId = deployResult.producedEntityId
+      expect(botId).toBeDefined()
+      const runtime = state.botRuntimes[botId ?? -1]
+      if (runtime === undefined) {
+        throw new Error('bot runtime missing')
+      }
+      // Simulate the bot mid-way through its program, blocked, with a stale lastResult register.
+      const frame = runtime.frames[0]
+      if (frame === undefined) {
+        throw new Error('frame missing')
+      }
+      frame.index = 5
+      runtime.status = 'blocked'
+      runtime.blockedReason = 'stale'
+      runtime.lastResult = { kind: 'tile', tile: { x: 9, y: 9 } }
+
+      const newInstructions = [
+        { id: '2', op: 'MOVE_TO' as const, args: [{ mode: 'absolute' as const, tile: { x: 2, y: 2 } }] },
+      ]
+      const result = executeAction(state, botId ?? -1, { op: 'EDIT_PROGRAM', botId: botId ?? -1, instructions: newInstructions })
+
+      expect(result).toEqual({ ok: true })
+      expect(state.programs[program.id]?.instructions).toEqual(newInstructions)
+      expect(runtime.frames).toEqual([{ instructions: newInstructions, index: 0, iterationsLeft: 1 }])
+      expect(runtime.currentAction).toBeNull()
+      expect(runtime.status).toBe('running')
+      expect(runtime.blockedReason).toBeUndefined()
+      expect(runtime.lastResult).toBeNull()
+    })
+
+    it('is not gated by the actor-busy check, so editing works while the bot is mid-action', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addPlayer(state, 1, 1)
+      const program = { id: 'p', name: 'p', version: 1, instructions: [] }
+      state.programs[program.id] = program
+      state.botRuntimes[botId] = {
+        programId: program.id,
+        frames: [{ instructions: [], index: 0, iterationsLeft: 1 }],
+        currentAction: null,
+        status: 'running',
+        failurePolicy: 'wait',
+        lastResult: null,
+        blockedRetryAt: 0,
+      }
+      const busyActor = getEntity(state, botId)
+      if (busyActor === undefined) {
+        throw new Error('actor missing')
+      }
+      busyActor.busyUntilTick = state.tick + 100
+
+      const result = executeAction(state, botId, { op: 'EDIT_PROGRAM', botId, instructions: [] })
+
+      expect(result).toEqual({ ok: true })
+    })
+
+    it('rejects editing a bot with no program assigned', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+
+      const result = executeAction(state, playerId, { op: 'EDIT_PROGRAM', botId: playerId, instructions: [] })
+
+      expect(result).toEqual({ ok: false, reason: 'bot has no program assigned' })
+    })
+  })
+
   describe('DEPLOY_BOT', () => {
     it('spawns a running bot at the actor position and registers the program', () => {
       const state = createWorld(5, 5, 1)

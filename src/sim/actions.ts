@@ -1,7 +1,7 @@
 import { createBotRuntime } from './botRuntime'
 import { createGroundItem, getActionCost, isItemKind, RESOURCE_YIELD, staticEntity } from './entities'
 import { BENCH_SAW_RECIPE, createBenchSaw, createStockpile } from './machines'
-import type { Program } from './program'
+import type { Instruction, Program } from './program'
 import type { Entity, EntityId, ItemKind, SimState, TileRef } from './types'
 import { addEntity, entitiesAt, getEntity, inBounds, isWalkable, removeEntity } from './world'
 import { findPath, isAdjacent } from './pathfind'
@@ -18,6 +18,7 @@ export type ActionRequest =
   | { op: 'TAKE_FROM'; target: EntityId; item: ItemKind }
   | { op: 'BUILD'; kind: BuildableType; target: TileRef }
   | { op: 'DEPLOY_BOT'; program: Program }
+  | { op: 'EDIT_PROGRAM'; botId: EntityId; instructions: Instruction[] }
 
 export interface ActionResult {
   ok: boolean
@@ -195,12 +196,40 @@ function deployBot(state: SimState, actor: Entity, program: Program): ActionResu
   return { ok: true, producedEntityId: botId }
 }
 
+/** Replaces a bot's program instructions and resets its frame stack, so an editor edit takes
+ * effect immediately without disturbing the bot's position, held item or world state. */
+function editProgram(state: SimState, botId: EntityId, instructions: Instruction[]): ActionResult {
+  const runtime = state.botRuntimes[botId]
+  if (runtime === undefined) {
+    return fail('bot has no program assigned')
+  }
+  const program = state.programs[runtime.programId]
+  if (program === undefined) {
+    return fail('unknown program')
+  }
+  program.instructions = instructions
+  runtime.frames = [{ instructions: program.instructions, index: 0, iterationsLeft: 1 }]
+  runtime.currentAction = null
+  runtime.status = 'running'
+  runtime.blockedReason = undefined
+  runtime.lastResult = null
+  runtime.blockedRetryAt = 0
+  return { ok: true }
+}
+
 /**
  * The only function that mutates the world. Every action a player or bot takes flows through here.
  * (vm.ts writes directly to a bot's own entry in `SimState.botRuntimes` — that's VM-internal program
  * counter/call-stack bookkeeping, not world state, so it's exempt from this rule.)
+ *
+ * EDIT_PROGRAM is handled before the actor lookup: it's an editor edit, not an actor performing a
+ * timed action, so it must work even while the bot it targets is mid-action.
  */
 export function executeAction(state: SimState, actorId: EntityId, request: ActionRequest): ActionResult {
+  if (request.op === 'EDIT_PROGRAM') {
+    return editProgram(state, request.botId, request.instructions)
+  }
+
   const actor = getEntity(state, actorId)
   if (actor === undefined) {
     return fail('unknown actor')
