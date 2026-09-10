@@ -15,8 +15,19 @@ const ENTITY_COLOURS: Record<EntityType, string> = {
   log: '#8a5a2b',
   stone: '#a8a8a8',
   plank: '#c9a06a',
+  block: '#c7c7c7',
+  grain: '#d9b23c',
+  flour: '#f2e9d8',
+  gear: '#9aa5ad',
+  circuit: '#3f9e7a',
+  core: '#8a4fd1',
   stockpile: '#5b4636',
   benchSaw: '#7a5230',
+  mill: '#6b5b8a',
+  soil: '#6b4a2f',
+  tilledSoil: '#4a3520',
+  seedling: '#7fbf5f',
+  wheat: '#dcc244',
 }
 
 export function drawTile(ctx: CanvasRenderingContext2D, tile: TileType, x: number, y: number, size: number): void {

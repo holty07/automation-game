@@ -85,6 +85,23 @@ describe('generalise', () => {
     ])
   })
 
+  it.each(['soil', 'tilledSoil', 'wheat'] as const)(
+    'chains a MOVE_TO/USE farming step (%s) through nearestOf, the same as tree/rock',
+    (entityType) => {
+      const moveToTarget = move('move', 3, 0)
+      const use: Instruction = { id: 'use', op: 'USE', args: [absolute(3, 0)] }
+      const raw = rawProgram([moveToTarget, use])
+      const targetTypes: Record<string, EntityType> = { use: entityType }
+
+      const { program } = generalise(raw, targetTypes, makeIdFrom('gen'))
+
+      expect(unwrap(program).map((instruction) => instruction.args[0])).toEqual([
+        { mode: 'nearestOf', entityType },
+        { mode: 'lastResult' },
+      ])
+    },
+  )
+
   it('leaves a MOVE_TO to a building absolute, since GIVE_TO/TAKE_FROM targets never chain', () => {
     const moveToStockpile = move('move', 5, 5)
     const giveTo: Instruction = { id: 'give', op: 'GIVE_TO', args: [absolute(5, 5)] }

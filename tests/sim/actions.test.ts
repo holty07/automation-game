@@ -1,9 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { addBenchSaw, addBot, addGroundItem, addPlayer, addRock, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
+import { addBenchSaw, addBot, addEntity, addGroundItem, addMill, addPlayer, addRock, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
 import { executeAction } from '../../src/sim/actions'
-import { BENCH_SAW_RECIPE, CONTAINER_CAPACITY } from '../../src/sim/machines'
+import { BOT_TIER_COSTS } from '../../src/sim/botCosts'
+import { createSoil, createTilledSoil, createWheat, WHEAT_GROW_TICKS } from '../../src/sim/farming'
+import { BENCH_SAW_RECIPES, CONTAINER_CAPACITY, MILL_RECIPES } from '../../src/sim/machines'
 import { createBotRuntime } from '../../src/sim/vm'
 import type { Instruction, Program } from '../../src/sim/program'
+import type { EntityId, SimState } from '../../src/sim/types'
+
+const PLANK_RECIPE = BENCH_SAW_RECIPES.log
+if (PLANK_RECIPE === undefined) {
+  throw new Error('expected recipe missing')
+}
+
+/** Stocks a fresh stockpile with exactly enough materials for one Mk1 bot, so DEPLOY_BOT tests
+ * that aren't themselves about the cost can ignore it. */
+function stockMk1Materials(state: SimState, x: number, y: number): void {
+  const stockpileId = addStockpile(state, x, y)
+  const stockpile = getEntity(state, stockpileId)
+  if (stockpile === undefined) {
+    throw new Error('stockpile missing')
+  }
+  stockpile.storage = { ...BOT_TIER_COSTS.mk1 }
+}
 
 describe('executeAction', () => {
   it('rejects an unknown actor', () => {
@@ -46,6 +65,49 @@ describe('executeAction', () => {
     const stone = state.entities.find((entity) => entity.id === result.producedEntityId)
     expect(stone?.type).toBe('stone')
     expect(stone?.pos).toEqual({ x: 2, y: 1 })
+  })
+
+  it('tills soil into tilled soil, in place', () => {
+    const state = createWorld(5, 5, 1)
+    const playerId = addPlayer(state, 1, 1)
+    const soilId = addEntity(state, createSoil({ x: 2, y: 1 }))
+
+    const result = executeAction(state, playerId, { op: 'USE', target: soilId })
+
+    expect(result.ok).toBe(true)
+    expect(getEntity(state, soilId)).toBeUndefined()
+    const tilled = state.entities.find((entity) => entity.id === result.producedEntityId)
+    expect(tilled?.type).toBe('tilledSoil')
+    expect(tilled?.pos).toEqual({ x: 2, y: 1 })
+  })
+
+  it('sows tilled soil into a growing seedling', () => {
+    const state = createWorld(5, 5, 1)
+    const playerId = addPlayer(state, 1, 1)
+    const tilledId = addEntity(state, createTilledSoil({ x: 2, y: 1 }))
+
+    const result = executeAction(state, playerId, { op: 'USE', target: tilledId })
+
+    expect(result.ok).toBe(true)
+    const seedling = state.entities.find((entity) => entity.id === result.producedEntityId)
+    expect(seedling?.type).toBe('seedling')
+    expect(seedling?.craftingUntilTick).toBe(state.tick + WHEAT_GROW_TICKS)
+  })
+
+  it('harvests wheat into grain, leaving tilled soil behind ready to re-sow', () => {
+    const state = createWorld(5, 5, 1)
+    const playerId = addPlayer(state, 1, 1)
+    const wheatId = addEntity(state, createWheat({ x: 2, y: 1 }))
+
+    const result = executeAction(state, playerId, { op: 'USE', target: wheatId })
+
+    expect(result.ok).toBe(true)
+    expect(getEntity(state, wheatId)).toBeUndefined()
+    const grain = state.entities.find((entity) => entity.id === result.producedEntityId)
+    expect(grain?.type).toBe('grain')
+    expect(grain?.pos).toEqual({ x: 2, y: 1 })
+    const tilled = state.entities.find((entity) => entity.type === 'tilledSoil')
+    expect(tilled?.pos).toEqual({ x: 2, y: 1 })
   })
 
   it('rejects PICK_UP when hands are already full', () => {
@@ -200,10 +262,48 @@ describe('executeAction', () => {
 
       expect(result.ok).toBe(true)
       expect(player.held).toBeNull()
-      expect(getEntity(state, benchSawId)?.craftingUntilTick).toBe(state.tick + BENCH_SAW_RECIPE.ticks)
+      expect(getEntity(state, benchSawId)?.craftingUntilTick).toBe(state.tick + PLANK_RECIPE.ticks)
+      expect(getEntity(state, benchSawId)?.craftingOutput).toBe('plank')
     })
 
-    it('rejects feeding a bench saw a stone', () => {
+    it('feeds grain into a mill, starting its recipe', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const millId = addMill(state, 2, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'grain'
+      const flourRecipe = MILL_RECIPES.grain
+      if (flourRecipe === undefined) {
+        throw new Error('expected recipe missing')
+      }
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: millId })
+
+      expect(result.ok).toBe(true)
+      expect(player.held).toBeNull()
+      expect(getEntity(state, millId)?.craftingUntilTick).toBe(state.tick + flourRecipe.ticks)
+      expect(getEntity(state, millId)?.craftingOutput).toBe('flour')
+    })
+
+    it('rejects feeding a mill a log, since the mill only mills grain', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const millId = addMill(state, 2, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'log'
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: millId })
+
+      expect(result).toEqual({ ok: false, reason: 'the machine cannot use that' })
+    })
+
+    it('rejects feeding a bench saw an item none of its recipes accept', () => {
       const state = createWorld(5, 5, 1)
       const playerId = addPlayer(state, 1, 1)
       const benchSawId = addBenchSaw(state, 2, 1)
@@ -211,11 +311,11 @@ describe('executeAction', () => {
       if (player === undefined) {
         throw new Error('player missing')
       }
-      player.held = 'stone'
+      player.held = 'grain'
 
       const result = executeAction(state, playerId, { op: 'GIVE_TO', target: benchSawId })
 
-      expect(result).toEqual({ ok: false, reason: 'the bench saw cannot use that' })
+      expect(result).toEqual({ ok: false, reason: 'the machine cannot use that' })
     })
 
     it('rejects feeding a bench saw that is already crafting', () => {
@@ -226,7 +326,7 @@ describe('executeAction', () => {
       if (benchSaw === undefined) {
         throw new Error('bench saw missing')
       }
-      benchSaw.craftingUntilTick = state.tick + BENCH_SAW_RECIPE.ticks
+      benchSaw.craftingUntilTick = state.tick + PLANK_RECIPE.ticks
       const player = getEntity(state, playerId)
       if (player === undefined) {
         throw new Error('player missing')
@@ -235,7 +335,7 @@ describe('executeAction', () => {
 
       const result = executeAction(state, playerId, { op: 'GIVE_TO', target: benchSawId })
 
-      expect(result).toEqual({ ok: false, reason: 'the bench saw is busy' })
+      expect(result).toEqual({ ok: false, reason: 'the machine is busy' })
     })
 
     it('rejects GIVE_TO when not adjacent to the container', () => {
@@ -403,6 +503,18 @@ describe('executeAction', () => {
       expect(built?.craftingUntilTick).toBeNull()
     })
 
+    it('places a mill on an empty adjacent tile', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+
+      const result = executeAction(state, playerId, { op: 'BUILD', kind: 'mill', target: { x: 2, y: 1 } })
+
+      expect(result.ok).toBe(true)
+      const built = getEntity(state, result.producedEntityId ?? -1)
+      expect(built?.type).toBe('mill')
+      expect(built?.storage).toEqual({})
+    })
+
     it('rejects BUILD outside the world', () => {
       const state = createWorld(5, 5, 1)
       const playerId = addPlayer(state, 0, 0)
@@ -436,6 +548,7 @@ describe('executeAction', () => {
     it('replaces the instructions and resets the frame stack, so an edit takes effect immediately', () => {
       const state = createWorld(5, 5, 1)
       const playerId = addPlayer(state, 1, 1)
+      stockMk1Materials(state, 0, 0)
       const program = {
         id: 'recorded-1',
         name: 'Recorded 1',
@@ -510,9 +623,10 @@ describe('executeAction', () => {
   })
 
   describe('DEPLOY_BOT', () => {
-    it('spawns a running bot at the actor position and registers the program', () => {
+    it('spawns a running bot at the actor position and registers the program, costed from stockpiles', () => {
       const state = createWorld(5, 5, 1)
       const playerId = addPlayer(state, 1, 1)
+      stockMk1Materials(state, 0, 0)
       const program = {
         id: 'recorded-1',
         name: 'Recorded 1',
@@ -531,6 +645,38 @@ describe('executeAction', () => {
       expect(state.programs[program.id]).toBe(program)
       expect(state.botRuntimes[botId ?? -1]?.status).toBe('running')
       expect(state.botRuntimes[botId ?? -1]?.programId).toBe(program.id)
+    })
+
+    it('rejects deploying when no stockpile holds enough materials', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const program = { id: 'p', name: 'p', version: 1, instructions: [] }
+
+      const result = executeAction(state, playerId, { op: 'DEPLOY_BOT', program })
+
+      expect(result).toEqual({ ok: false, reason: 'not enough materials in a stockpile to build a Mk1 bot' })
+      expect(state.entities.some((entity) => entity.type === 'bot')).toBe(false)
+    })
+
+    it('draws combined cost from multiple stockpiles across the world', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 2, 2)
+      const stockpileAId = addStockpile(state, 0, 0)
+      const stockpileBId = addStockpile(state, 4, 4)
+      const a = getEntity(state, stockpileAId)
+      const b = getEntity(state, stockpileBId)
+      if (a === undefined || b === undefined) {
+        throw new Error('stockpile missing')
+      }
+      a.storage = { plank: 4, block: 1 }
+      b.storage = { block: 1, flour: 1 }
+      const program = { id: 'p', name: 'p', version: 1, instructions: [] }
+
+      const result = executeAction(state, playerId, { op: 'DEPLOY_BOT', program })
+
+      expect(result.ok).toBe(true)
+      expect(a.storage).toEqual({ plank: 0, block: 0 })
+      expect(b.storage).toEqual({ block: 0, flour: 0 })
     })
   })
 
@@ -553,6 +699,61 @@ describe('executeAction', () => {
       const botId = addBot(state, 0, 0)
 
       const result = executeAction(state, botId, { op: 'SET_BOT_TIER', botId, tier: 'mk2' })
+
+      expect(result).toEqual({ ok: false, reason: 'bot has no program assigned' })
+    })
+  })
+
+  describe('UPGRADE_BOT_TIER', () => {
+    function botAt(state: SimState, tier: 'mk1' | 'mk2' | 'mk3' | 'mk4'): EntityId {
+      const botId = addBot(state, 0, 0)
+      const program: Program = { id: 'p', name: 'p', version: 1, instructions: [] }
+      state.programs[program.id] = program
+      state.botRuntimes[botId] = createBotRuntime(program.id, program, 'wait', tier)
+      return botId
+    }
+
+    it('upgrades to the next tier, costed from stockpiles', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = botAt(state, 'mk1')
+      stockMk1Materials(state, 1, 1)
+      const stockpile = state.entities.find((entity) => entity.type === 'stockpile')
+      if (stockpile === undefined || stockpile.storage === null) {
+        throw new Error('stockpile missing')
+      }
+      stockpile.storage.gear = 2
+
+      const result = executeAction(state, botId, { op: 'UPGRADE_BOT_TIER', botId })
+
+      expect(result).toEqual({ ok: true })
+      expect(state.botRuntimes[botId]?.tier).toBe('mk2')
+      expect(stockpile.storage.gear).toBe(0)
+    })
+
+    it('rejects upgrading without enough stocked materials, leaving the tier unchanged', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = botAt(state, 'mk1')
+
+      const result = executeAction(state, botId, { op: 'UPGRADE_BOT_TIER', botId })
+
+      expect(result).toEqual({ ok: false, reason: 'not enough materials in a stockpile to upgrade to mk2' })
+      expect(state.botRuntimes[botId]?.tier).toBe('mk1')
+    })
+
+    it('rejects upgrading past the highest tier', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = botAt(state, 'mk4')
+
+      const result = executeAction(state, botId, { op: 'UPGRADE_BOT_TIER', botId })
+
+      expect(result).toEqual({ ok: false, reason: 'bot is already at the highest tier' })
+    })
+
+    it('rejects upgrading a bot with no program assigned', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+
+      const result = executeAction(state, botId, { op: 'UPGRADE_BOT_TIER', botId })
 
       expect(result).toEqual({ ok: false, reason: 'bot has no program assigned' })
     })

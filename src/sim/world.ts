@@ -2,12 +2,14 @@ import type { Entity, EntityId, ItemKind, SimState, TileRef, TileType } from './
 import { createRng } from './rng'
 import { MOVE_TICKS_PER_TILE } from './movement'
 import { createGroundItem, createRock, createTree, staticEntity } from './entities'
-import { createBenchSaw, createStockpile } from './machines'
+import { createBenchSaw, createMill, createStockpile } from './machines'
 
 const DEFAULT_TILE: TileType = 'grass'
 
-/** Entity types that occupy their tile exclusively — nothing else can walk onto or path through it. */
-const BLOCKING_TYPES = new Set(['tree', 'rock', 'stockpile', 'benchSaw'])
+/** Entity types that occupy their tile exclusively — nothing else can walk onto or path through it.
+ * Farming fixtures (soil, tilled soil, seedlings, wheat) are deliberately excluded — a field should
+ * be walkable, not a maze. */
+const BLOCKING_TYPES = new Set(['tree', 'rock', 'stockpile', 'benchSaw', 'mill'])
 
 export function createWorld(width: number, height: number, seed: number): SimState {
   return {
@@ -77,6 +79,7 @@ export function addPlayer(state: SimState, x: number, y: number): EntityId {
     busyUntilTick: 0,
     storage: null,
     craftingUntilTick: null,
+    craftingOutput: null,
   })
 }
 
@@ -98,6 +101,10 @@ export function addStockpile(state: SimState, x: number, y: number): EntityId {
 
 export function addBenchSaw(state: SimState, x: number, y: number): EntityId {
   return addEntity(state, createBenchSaw({ x, y }))
+}
+
+export function addMill(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, createMill({ x, y }))
 }
 
 export function addBot(state: SimState, x: number, y: number): EntityId {

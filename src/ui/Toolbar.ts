@@ -18,6 +18,7 @@ export interface Toolbar {
 const BUILD_LABELS: Record<BuildableType, string> = {
   stockpile: 'Stockpile',
   benchSaw: 'Bench Saw',
+  mill: 'Mill',
 }
 
 export function createToolbar(container: HTMLElement, state: SimState, playerId: EntityId, recorder: Recorder): Toolbar {
@@ -50,9 +51,9 @@ export function createToolbar(container: HTMLElement, state: SimState, playerId:
         generaliseIdCounter += 1
         return `gen-${recordedProgramCount}-${generaliseIdCounter}`
       })
-      review.open(program.instructions, changes, (finalInstructions) => {
-        executeAction(state, playerId, { op: 'DEPLOY_BOT', program: { ...program, instructions: finalInstructions } })
-      })
+      review.open(program.instructions, changes, (finalInstructions) =>
+        executeAction(state, playerId, { op: 'DEPLOY_BOT', program: { ...program, instructions: finalInstructions } }),
+      )
       return
     }
     recorder.start()
@@ -75,7 +76,7 @@ export function createToolbar(container: HTMLElement, state: SimState, playerId:
     refreshButtons()
   }
 
-  for (const choice of ['stockpile', 'benchSaw'] as const) {
+  for (const choice of ['stockpile', 'benchSaw', 'mill'] as const) {
     const button = document.createElement('button')
     button.addEventListener('click', () => onButtonClick(choice))
     buttons.set(choice, button)

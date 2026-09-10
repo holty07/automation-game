@@ -17,9 +17,27 @@ const OPCODE_LABELS: Record<string, string> = {
 }
 
 /** Entity types a bot might sensibly aim a target at — everything but the actors themselves. */
-const TARGETABLE_ENTITY_TYPES: EntityType[] = ['tree', 'rock', 'stockpile', 'benchSaw', 'log', 'stone', 'plank']
+const TARGETABLE_ENTITY_TYPES: EntityType[] = [
+  'tree',
+  'rock',
+  'soil',
+  'tilledSoil',
+  'wheat',
+  'stockpile',
+  'benchSaw',
+  'mill',
+  'log',
+  'stone',
+  'plank',
+  'block',
+  'grain',
+  'flour',
+  'gear',
+  'circuit',
+  'core',
+]
 
-const ITEM_OPTIONS: ItemKind[] = ['log', 'stone', 'plank']
+const ITEM_OPTIONS: ItemKind[] = ['log', 'stone', 'plank', 'block', 'grain', 'flour', 'gear', 'circuit', 'core']
 
 const BINDING_MODE_LABELS: Record<TargetRef['mode'], string> = {
   absolute: 'Exact tile',

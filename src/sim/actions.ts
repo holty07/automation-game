@@ -1,14 +1,16 @@
-import { assignRoutine, copyProgram, editProgram, saveRoutine, setBotTier, setFailurePolicy } from './botControl'
+import { assignRoutine, copyProgram, editProgram, saveRoutine, setBotTier, setFailurePolicy, upgradeBotTier } from './botControl'
+import { hasStockedCost, BOT_TIER_COSTS, deductStockedCost } from './botCosts'
 import { createBotRuntime, type FailurePolicy } from './botRuntime'
-import { createGroundItem, getActionCost, isItemKind, RESOURCE_YIELD, staticEntity } from './entities'
-import { BENCH_SAW_RECIPE, CONTAINER_CAPACITY, createBenchSaw, createStockpile, totalStored } from './machines'
+import { createGroundItem, getActionCost, isItemKind, staticEntity } from './entities'
+import { CONTAINER_CAPACITY, createBenchSaw, createMill, createStockpile, recipesFor, totalStored } from './machines'
 import type { BotTier, Instruction, Program } from './program'
 import type { Entity, EntityId, ItemKind, SimState, TileRef } from './types'
+import { use } from './useVerb'
 import { addEntity, entitiesAt, getEntity, inBounds, isWalkable, removeEntity } from './world'
 import { findPath, isAdjacent } from './pathfind'
 
 /** Buildings the player can place on an empty tile. */
-export type BuildableType = 'stockpile' | 'benchSaw'
+export type BuildableType = 'stockpile' | 'benchSaw' | 'mill'
 
 export type ActionRequest =
   | { op: 'MOVE_TO'; target: TileRef }
@@ -26,6 +28,7 @@ export type ActionRequest =
   | { op: 'SAVE_ROUTINE'; botId: EntityId; routineId: string; name: string }
   | { op: 'ASSIGN_ROUTINE'; botId: EntityId; routineId: string; programId: string }
   | { op: 'COPY_PROGRAM'; fromBotId: EntityId; toBotId: EntityId; programId: string }
+  | { op: 'UPGRADE_BOT_TIER'; botId: EntityId }
 
 export interface ActionResult {
   ok: boolean
@@ -101,24 +104,6 @@ function drop(state: SimState, actor: Entity, target: TileRef): ActionResult {
   return { ok: true, producedEntityId }
 }
 
-function use(state: SimState, actor: Entity, targetId: EntityId): ActionResult {
-  const target = getEntity(state, targetId)
-  if (target === undefined || (target.type !== 'tree' && target.type !== 'rock')) {
-    return fail('nothing to use there')
-  }
-  if (!isAdjacent(actor.pos, target.pos)) {
-    return fail('target is out of reach')
-  }
-
-  const cost = getActionCost('USE', target.type)
-  const yieldKind = RESOURCE_YIELD[target.type]
-  const spawnPos = target.pos
-  removeEntity(state, target.id)
-  const producedEntityId = spawnGroundItem(state, yieldKind, spawnPos)
-  actor.busyUntilTick = state.tick + cost
-  return { ok: true, producedEntityId }
-}
-
 function giveTo(state: SimState, actor: Entity, targetId: EntityId): ActionResult {
   const target = getEntity(state, targetId)
   if (target === undefined || target.storage === null) {
@@ -137,17 +122,20 @@ function giveTo(state: SimState, actor: Entity, targetId: EntityId): ActionResul
 
   const heldKind = actor.held
 
-  if (target.type === 'benchSaw') {
-    if (heldKind !== BENCH_SAW_RECIPE.input) {
-      return fail('the bench saw cannot use that')
+  const recipes = recipesFor(target.type)
+  if (recipes !== null) {
+    const recipe = recipes[heldKind]
+    if (recipe === undefined) {
+      return fail('the machine cannot use that')
     }
     if (target.craftingUntilTick !== null) {
-      return fail('the bench saw is busy')
+      return fail('the machine is busy')
     }
     const cost = getActionCost('GIVE_TO', heldKind)
     actor.held = null
     actor.busyUntilTick = state.tick + cost
-    target.craftingUntilTick = state.tick + BENCH_SAW_RECIPE.ticks
+    target.craftingUntilTick = state.tick + recipe.ticks
+    target.craftingOutput = recipe.output
     return { ok: true }
   }
 
@@ -193,14 +181,20 @@ function build(state: SimState, actor: Entity, kind: BuildableType, target: Tile
   }
 
   const cost = getActionCost('BUILD', kind)
-  const entityData = kind === 'stockpile' ? createStockpile(target) : createBenchSaw(target)
+  const entityData = kind === 'stockpile' ? createStockpile(target) : kind === 'benchSaw' ? createBenchSaw(target) : createMill(target)
   const producedEntityId = addEntity(state, entityData)
   actor.busyUntilTick = state.tick + cost
   return { ok: true, producedEntityId }
 }
 
-/** Spawns a bot at the actor's own position and assigns it the finished program, already running. */
+/** Spawns a Mk1 bot at the actor's own position and assigns it the finished program, already
+ * running — costed from stockpiles across the world (see botCosts.ts). */
 function deployBot(state: SimState, actor: Entity, program: Program): ActionResult {
+  const cost = BOT_TIER_COSTS.mk1
+  if (!hasStockedCost(state, cost)) {
+    return fail('not enough materials in a stockpile to build a Mk1 bot')
+  }
+  deductStockedCost(state, cost)
   state.programs[program.id] = program
   const botId = addEntity(state, staticEntity('bot', actor.pos))
   state.botRuntimes[botId] = createBotRuntime(program.id, program)
@@ -217,9 +211,9 @@ function wait(state: SimState, actor: Entity, ticks: number): ActionResult {
  * (vm.ts writes directly to a bot's own entry in `SimState.botRuntimes` — that's VM-internal program
  * counter/call-stack bookkeeping, not world state, so it's exempt from this rule.)
  *
- * EDIT_PROGRAM, SET_FAILURE_POLICY, SET_BOT_TIER, SAVE_ROUTINE, ASSIGN_ROUTINE and COPY_PROGRAM are
- * all handled before the actor lookup: they're editor edits, not an actor performing a timed
- * action, so they must work even while the bot is mid-action.
+ * EDIT_PROGRAM, SET_FAILURE_POLICY, SET_BOT_TIER, SAVE_ROUTINE, ASSIGN_ROUTINE, COPY_PROGRAM and
+ * UPGRADE_BOT_TIER are all handled before the actor lookup: they're editor edits, not an actor
+ * performing a timed action, so they must work even while the bot is mid-action.
  */
 export function executeAction(state: SimState, actorId: EntityId, request: ActionRequest): ActionResult {
   if (request.op === 'EDIT_PROGRAM') {
@@ -239,6 +233,9 @@ export function executeAction(state: SimState, actorId: EntityId, request: Actio
   }
   if (request.op === 'COPY_PROGRAM') {
     return copyProgram(state, request.fromBotId, request.toBotId, request.programId)
+  }
+  if (request.op === 'UPGRADE_BOT_TIER') {
+    return upgradeBotTier(state, request.botId)
   }
 
   const actor = getEntity(state, actorId)

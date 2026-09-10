@@ -93,12 +93,13 @@ export function createScriptEditor(container: HTMLElement, state: SimState): Scr
   header.append(title, statusLine, failurePolicySelect, closeButton)
 
   const botControls = createBotControls(panel, {
-    onTierChange(tier) {
+    onUpgradeTier() {
       if (openBotId === null) {
-        return
+        return { ok: false, reason: 'no bot open' }
       }
-      executeAction(state, openBotId, { op: 'SET_BOT_TIER', botId: openBotId, tier })
+      const result = executeAction(state, openBotId, { op: 'UPGRADE_BOT_TIER', botId: openBotId })
       render()
+      return result
     },
     onSaveRoutine(name) {
       if (openBotId === null) {
