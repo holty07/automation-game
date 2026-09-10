@@ -94,6 +94,20 @@ function isWrappedInOuterRepeatForever(instructions: Instruction[]): boolean {
   return only !== undefined && only.op === 'REPEAT' && only.params?.mode === 'forever'
 }
 
+/** The instruction cap for a bot tier, as enforced by `validate`. Used by the editor UI to show
+ * the counter without re-deriving the tier table. */
+export function instructionCap(tier: BotTier): number {
+  return TIER_SPECS[tier].maxInstructions
+}
+
+/** Instruction count against the cap: the implicit outer REPEAT forever wrapping a recorded
+ * program does not count, but a REPEAT the player added deliberately does. */
+export function countScriptInstructions(program: Program): number {
+  const wrapped = isWrappedInOuterRepeatForever(program.instructions)
+  const countedInstructions = wrapped ? (program.instructions[0]?.children ?? []) : program.instructions
+  return countInstructions(countedInstructions)
+}
+
 /**
  * Checks a program against a bot tier's instruction cap and opcode allowlist. The implicit
  * outer REPEAT forever that wraps a recorded program does not count against the cap.
@@ -102,9 +116,7 @@ export function validate(program: Program, tier: BotTier): ValidationResult {
   const errors: string[] = []
   const spec = TIER_SPECS[tier]
 
-  const wrapped = isWrappedInOuterRepeatForever(program.instructions)
-  const countedInstructions = wrapped ? (program.instructions[0]?.children ?? []) : program.instructions
-  const instructionCount = countInstructions(countedInstructions)
+  const instructionCount = countScriptInstructions(program)
   if (instructionCount > spec.maxInstructions) {
     errors.push(`program has ${instructionCount} instructions, but ${tier} allows at most ${spec.maxInstructions}`)
   }

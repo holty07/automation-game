@@ -11,10 +11,12 @@
     "lint": "eslint .",
     "test": "vitest run",
     "verify": "pnpm typecheck && pnpm lint && pnpm test",
-    "sim": "tsx scripts/sim.ts"
+    "sim": "tsx scripts/sim.ts",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.2",
     "eslint": "^9.15.0",
     "tsx": "^4.19.2",

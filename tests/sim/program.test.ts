@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { migrate, validate } from '../../src/sim/program'
+import { countScriptInstructions, instructionCap, migrate, validate } from '../../src/sim/program'
 import type { Instruction, Program } from '../../src/sim/program'
 
 function moveInstruction(id: string): Instruction {
@@ -127,6 +127,61 @@ describe('validate', () => {
 
     expect(result.ok).toBe(false)
     expect(result.errors.some((error) => error.includes('missing an item'))).toBe(true)
+  })
+})
+
+describe('instructionCap', () => {
+  it('matches the cap enforced by validate for every tier', () => {
+    expect(instructionCap('mk1')).toBe(8)
+    expect(instructionCap('mk2')).toBe(20)
+    expect(instructionCap('mk3')).toBe(40)
+    expect(instructionCap('mk4')).toBe(100)
+  })
+})
+
+describe('countScriptInstructions', () => {
+  it('counts a flat instruction list', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'flat',
+      version: 1,
+      instructions: [moveInstruction('1'), moveInstruction('2')],
+    }
+
+    expect(countScriptInstructions(program)).toBe(2)
+  })
+
+  it('does not count the implicit outer REPEAT forever wrapping a recorded program', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'wrapped',
+      version: 1,
+      instructions: [
+        {
+          id: 'outer',
+          op: 'REPEAT',
+          args: [],
+          params: { mode: 'forever' },
+          children: [moveInstruction('1'), moveInstruction('2'), moveInstruction('3')],
+        },
+      ],
+    }
+
+    expect(countScriptInstructions(program)).toBe(3)
+  })
+
+  it('counts a nested REPEAT the player added deliberately, unlike the implicit outer wrap', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'nested',
+      version: 1,
+      instructions: [
+        moveInstruction('1'),
+        { id: 'inner', op: 'REPEAT', args: [], params: { mode: 'count', count: 2 }, children: [moveInstruction('2')] },
+      ],
+    }
+
+    expect(countScriptInstructions(program)).toBe(3)
   })
 })
 

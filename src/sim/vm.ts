@@ -10,7 +10,7 @@ import type { Entity, EntityId, SimState, TileRef } from './types'
 import { entitiesAt, getEntity, isWalkable } from './world'
 
 export type { BotRuntime, BotStatus, CurrentAction, FailurePolicy, Frame } from './botRuntime'
-export { createBotRuntime } from './botRuntime'
+export { createBotRuntime, currentInstructionId } from './botRuntime'
 
 /** One game-second at the fixed 20Hz tick rate: how often a blocked 'wait' bot retries. */
 const RETRY_TICKS = 20
@@ -234,6 +234,7 @@ function stepBot(state: SimState, botId: EntityId, runtime: BotRuntime): void {
         op: instruction.op,
         resolvedTarget: displayTarget,
         ticksRemaining: Math.max(0, actor.busyUntilTick - state.tick),
+        instructionId: instruction.id,
       }
       return
     }

@@ -34,6 +34,9 @@ function targetTileFor(state: SimState, request: ActionRequest): TileRef | null 
     case 'DEPLOY_BOT':
       // Bots have no BUILD or DEPLOY_BOT opcode, so neither is ever recordable.
       return null
+    case 'EDIT_PROGRAM':
+      // An editor edit, not a player action — never recordable.
+      return null
   }
 }
 
@@ -55,6 +58,7 @@ function toInstruction(id: string, request: ActionRequest, tile: TileRef): Instr
       return { id, op: 'TAKE_FROM', args: [target], item: request.item }
     case 'BUILD':
     case 'DEPLOY_BOT':
+    case 'EDIT_PROGRAM':
       return null
   }
 }
