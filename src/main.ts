@@ -11,6 +11,7 @@ import { createToolbar } from './ui/Toolbar'
 import { createBotList } from './ui/BotList'
 import { createScriptEditor } from './ui/ScriptEditor'
 import { createTutorial } from './ui/Tutorial'
+import { createHoverInfo } from './ui/HoverInfo'
 
 declare global {
   interface Window {
@@ -95,6 +96,7 @@ window.addEventListener('resize', () => resizeCanvas(canvas))
 const recorder = createRecorder()
 const toolbar = createToolbar(ui, state, playerId, recorder)
 const controls = createControls(canvas, state, camera, playerId, toolbar, recorder)
+const hoverInfo = createHoverInfo(canvas, ui, state, camera, playerId)
 const scriptEditor = createScriptEditor(ui, state)
 const tutorial = createTutorial(ui, state)
 const botList = createBotList(ui, state, (botId) => {
@@ -108,5 +110,6 @@ createLoop(state, (currentState, alpha) => {
   botList.update()
   scriptEditor.update()
   tutorial.update()
+  hoverInfo.update()
   render(ctx, currentState, camera, playerId, alpha)
 })
