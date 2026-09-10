@@ -16,6 +16,9 @@ test('player can open a bot’s script and flip a target from absolute to neares
   await page.waitForTimeout(800)
   await page.getByRole('button', { name: 'Stop' }).click()
 
+  // Stop no longer deploys straight away — it shows the generalised program for review first.
+  await page.getByRole('button', { name: 'Assign to bot' }).click()
+
   await expect(page.locator('.bot-list-row')).toHaveCount(1)
   await page.locator('.bot-list-row').click()
 

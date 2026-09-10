@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { isActorBusy } from '../../src/sim/actions'
+import { generalise } from '../../src/sim/generalise'
 import { buildRecordedProgram, createRecorder } from '../../src/sim/recorder'
+import type { Recorder } from '../../src/sim/recorder'
 import { createBotRuntime } from '../../src/sim/vm'
 import { tick } from '../../src/sim/tick'
 import { addBot, addPlayer, addTree, createWorld, getEntity } from '../../src/sim/world'
@@ -22,8 +24,7 @@ function isIdle(state: SimState, actorId: EntityId): boolean {
 }
 
 /** Records a chop-and-drop: walk to a tree, chop it, walk to the log, pick it up, walk home, drop it. */
-function recordChopAndDrop(state: SimState, actorId: EntityId, treeId: EntityId) {
-  const recorder = createRecorder()
+function recordChopAndDrop(state: SimState, actorId: EntityId, treeId: EntityId, recorder: Recorder = createRecorder()) {
   recorder.start()
 
   recorder.perform(state, actorId, { op: 'MOVE_TO', target: { x: 1, y: 0 } })
@@ -86,26 +87,15 @@ describe('recorder', () => {
     expect(instructions[5]?.args[0]).toEqual({ mode: 'absolute', tile: { x: 0, y: 0 } })
   })
 
-  it('produces a program wrapped in an outer REPEAT forever', () => {
-    const state = createWorld(10, 10, 1)
-    const playerId = addPlayer(state, 0, 0)
-    const treeId = addTree(state, 2, 0)
-
-    const instructions = recordChopAndDrop(state, playerId, treeId)
-    const program = buildRecordedProgram('recorded-1', 'Recorded 1', instructions)
-
-    expect(program.instructions).toHaveLength(1)
-    expect(program.instructions[0]?.op).toBe('REPEAT')
-    expect(program.instructions[0]?.params).toEqual({ mode: 'forever' })
-    expect(program.instructions[0]?.children).toEqual(instructions)
-  })
-
-  it('a bot assigned the recorded program reproduces the same action sequence', () => {
+  it('a bot assigned the recorded-and-generalised program reproduces the same action sequence', () => {
     const recordedState = createWorld(10, 10, 1)
     const playerId = addPlayer(recordedState, 0, 0)
     const playerTreeId = addTree(recordedState, 2, 0)
-    const instructions = recordChopAndDrop(recordedState, playerId, playerTreeId)
-    const program = buildRecordedProgram('recorded-1', 'Recorded 1', instructions)
+    const recorder = createRecorder()
+    const instructions = recordChopAndDrop(recordedState, playerId, playerTreeId, recorder)
+    const rawProgram = buildRecordedProgram('recorded-1', 'Recorded 1', instructions)
+    let idCounter = 0
+    const { program } = generalise(rawProgram, recorder.lastTargetTypes(), () => `gen-${(idCounter += 1)}`)
 
     const botState = createWorld(10, 10, 1)
     const botId = addBot(botState, 0, 0)
@@ -175,5 +165,36 @@ describe('recorder', () => {
 
     expect(result.ok).toBe(false)
     expect(recorder.stop()).toEqual([])
+  })
+
+  it('captures the target entity type for USE/PICK_UP, since generalise needs it once the target is gone', () => {
+    const state = createWorld(10, 10, 1)
+    const playerId = addPlayer(state, 0, 0)
+    const treeId = addTree(state, 2, 0)
+    const recorder = createRecorder()
+
+    const instructions = recordChopAndDrop(state, playerId, treeId, recorder)
+    const targetTypes = recorder.lastTargetTypes()
+
+    const use = instructions.find((instruction) => instruction.op === 'USE')
+    const pickUp = instructions.find((instruction) => instruction.op === 'PICK_UP')
+    expect(use === undefined ? undefined : targetTypes[use.id]).toBe('tree')
+    expect(pickUp === undefined ? undefined : targetTypes[pickUp.id]).toBe('log')
+    // MOVE_TO/DROP have no associated entity type.
+    const moveTo = instructions.find((instruction) => instruction.op === 'MOVE_TO')
+    expect(moveTo === undefined ? undefined : targetTypes[moveTo.id]).toBeUndefined()
+  })
+
+  it('resets lastTargetTypes on a fresh start()', () => {
+    const state = createWorld(10, 10, 1)
+    const playerId = addPlayer(state, 0, 0)
+    const treeId = addTree(state, 2, 0)
+    const recorder = createRecorder()
+
+    recordChopAndDrop(state, playerId, treeId, recorder)
+    expect(Object.keys(recorder.lastTargetTypes()).length).toBeGreaterThan(0)
+
+    recorder.start()
+    expect(recorder.lastTargetTypes()).toEqual({})
   })
 })

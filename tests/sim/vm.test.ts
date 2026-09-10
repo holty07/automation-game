@@ -203,6 +203,139 @@ describe('bot VM', () => {
     expect(() => stepBots(state)).not.toThrow()
   })
 
+  it('WAIT idles the bot for exactly its duration without taking any other action', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    const program: Program = {
+      id: 'p',
+      name: 'wait then move',
+      version: 1,
+      instructions: [
+        { id: '1', op: 'WAIT', args: [], waitTicks: 10 },
+        { id: '2', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 1, y: 0 } }] },
+      ],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+    runTicks(state, 9)
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 0, y: 0 })
+
+    runTicks(state, 30)
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 1, y: 0 })
+  })
+
+  it('REPEAT_UNTIL loops its body until the condition becomes true', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    const program: Program = {
+      id: 'p',
+      name: 'wait until holding',
+      version: 1,
+      instructions: [
+        {
+          id: 'until',
+          op: 'REPEAT_UNTIL',
+          args: [],
+          condition: { type: 'HOLDING', item: 'log' },
+          children: [{ id: 'wait', op: 'WAIT', args: [], waitTicks: 5 }],
+        },
+        { id: 'final', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 1, y: 0 } }] },
+      ],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+    runTicks(state, 12)
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 0, y: 0 })
+
+    const bot = getEntity(state, botId)
+    if (bot === undefined) {
+      throw new Error('bot missing')
+    }
+    bot.held = 'log'
+
+    runTicks(state, 20)
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 1, y: 0 })
+  })
+
+  it('IF runs the true branch when the condition holds', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    const bot = getEntity(state, botId)
+    if (bot === undefined) {
+      throw new Error('bot missing')
+    }
+    bot.held = 'log'
+    const program: Program = {
+      id: 'p',
+      name: 'if-holding',
+      version: 1,
+      instructions: [
+        {
+          id: 'if',
+          op: 'IF',
+          args: [],
+          condition: { type: 'HOLDING', item: 'log' },
+          children: [{ id: 'then', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 1, y: 0 } }] }],
+          elseChildren: [{ id: 'else', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 4, y: 4 } }] }],
+        },
+      ],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+    runTicks(state, 20)
+
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 1, y: 0 })
+  })
+
+  it('IF runs the else branch when the condition fails', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    const program: Program = {
+      id: 'p',
+      name: 'if-not-holding',
+      version: 1,
+      instructions: [
+        {
+          id: 'if',
+          op: 'IF',
+          args: [],
+          condition: { type: 'HOLDING', item: 'log' },
+          children: [{ id: 'then', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 1, y: 0 } }] }],
+          elseChildren: [{ id: 'else', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 4, y: 4 } }] }],
+        },
+      ],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+    runTicks(state, 30)
+
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 4, y: 4 })
+  })
+
+  it('an IF with no matching branch is a no-op, falling through to the next instruction', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    const program: Program = {
+      id: 'p',
+      name: 'if-no-else',
+      version: 1,
+      instructions: [
+        { id: 'if', op: 'IF', args: [], condition: { type: 'HOLDING', item: 'log' }, children: [{ id: 'then', op: 'WAIT', args: [], waitTicks: 999 }] },
+        { id: 'final', op: 'MOVE_TO', args: [{ mode: 'absolute', tile: { x: 3, y: 0 } }] },
+      ],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+    runTicks(state, 20)
+
+    expect(getEntity(state, botId)?.pos).toEqual({ x: 3, y: 0 })
+  })
+
   it('fails cleanly (never throws) when TAKE_FROM targets an empty container', () => {
     const state = createWorld(6, 6, 1)
     const botId = addBot(state, 1, 1)

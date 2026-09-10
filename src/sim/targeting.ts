@@ -1,6 +1,6 @@
 import type { TargetRef } from './program'
 import type { Entity, EntityId, EntityType, ItemKind, SimState, TileRef } from './types'
-import { getEntity, inBounds } from './world'
+import { entitiesAt, getEntity, inBounds } from './world'
 
 export type ResolvedTarget =
   | { kind: 'entity'; id: EntityId; pos: TileRef }
@@ -88,4 +88,21 @@ export function resolveTarget(
       return tile === undefined ? null : { kind: 'tile', tile: { ...tile } }
     }
   }
+}
+
+/**
+ * An `absolute`/`marker` binding resolves to a tile (e.g. "that exact chest"'s location), not the
+ * chest itself, so ops that need an entity (USE, PICK_UP, GIVE_TO, TAKE_FROM, and container
+ * conditions) look one up at that tile matching `isMatch`. A `nearestOf`/`inArea` binding already
+ * resolved straight to an entity.
+ */
+export function resolveEntityTarget(state: SimState, resolved: ResolvedTarget, isMatch: (entity: Entity) => boolean): EntityId | null {
+  if (resolved.kind === 'entity') {
+    return resolved.id
+  }
+  if (resolved.kind === 'tile') {
+    const entity = entitiesAt(state, resolved.tile.x, resolved.tile.y).find(isMatch)
+    return entity === undefined ? null : entity.id
+  }
+  return null
 }

@@ -28,10 +28,18 @@
       .instruction-row.drop-after { border-bottom-color: #5af; }
       .instruction-row.drop-into { outline: 2px dashed #fa5; }
       .drag-handle { cursor: grab; opacity: 0.6; }
-      .arg-editor { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-      .arg-editor select { max-width: 8em; }
-      .arg-editor input[type="number"] { width: 3.5em; }
+      .arg-editor, .condition-editor { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+      .arg-editor select, .condition-editor select { max-width: 8em; }
+      .arg-editor input[type="number"], .condition-editor input[type="number"] { width: 3.5em; }
       .instruction-row button { flex-shrink: 0; }
+      .add-instruction-row { display: flex; gap: 4px; margin-top: 8px; }
+
+      .generalise-review {
+        position: fixed; left: 50%; top: 40px; transform: translateX(-50%); width: 420px;
+        background: #1b1b1b; padding: 12px; box-sizing: border-box; font-size: 13px; border: 1px solid #444;
+      }
+      .generalise-summary { margin-bottom: 8px; }
+      .generalise-change-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 0; }
     </style>
   </head>
   <body>

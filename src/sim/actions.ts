@@ -1,6 +1,6 @@
-import { createBotRuntime } from './botRuntime'
+import { createBotRuntime, type FailurePolicy } from './botRuntime'
 import { createGroundItem, getActionCost, isItemKind, RESOURCE_YIELD, staticEntity } from './entities'
-import { BENCH_SAW_RECIPE, createBenchSaw, createStockpile } from './machines'
+import { BENCH_SAW_RECIPE, CONTAINER_CAPACITY, createBenchSaw, createStockpile, totalStored } from './machines'
 import type { Instruction, Program } from './program'
 import type { Entity, EntityId, ItemKind, SimState, TileRef } from './types'
 import { addEntity, entitiesAt, getEntity, inBounds, isWalkable, removeEntity } from './world'
@@ -16,9 +16,11 @@ export type ActionRequest =
   | { op: 'USE'; target: EntityId }
   | { op: 'GIVE_TO'; target: EntityId }
   | { op: 'TAKE_FROM'; target: EntityId; item: ItemKind }
+  | { op: 'WAIT'; ticks: number }
   | { op: 'BUILD'; kind: BuildableType; target: TileRef }
   | { op: 'DEPLOY_BOT'; program: Program }
   | { op: 'EDIT_PROGRAM'; botId: EntityId; instructions: Instruction[] }
+  | { op: 'SET_FAILURE_POLICY'; botId: EntityId; policy: FailurePolicy }
 
 export interface ActionResult {
   ok: boolean
@@ -124,6 +126,10 @@ function giveTo(state: SimState, actor: Entity, targetId: EntityId): ActionResul
     return fail('target is out of reach')
   }
 
+  if (totalStored(target.storage) >= CONTAINER_CAPACITY) {
+    return fail('container is full')
+  }
+
   const heldKind = actor.held
 
   if (target.type === 'benchSaw') {
@@ -217,17 +223,36 @@ function editProgram(state: SimState, botId: EntityId, instructions: Instruction
   return { ok: true }
 }
 
+function wait(state: SimState, actor: Entity, ticks: number): ActionResult {
+  actor.busyUntilTick = state.tick + Math.max(0, ticks)
+  return { ok: true }
+}
+
+/** Sets a bot's failure policy directly — a player choice in the editor, not a timed action, so
+ * it must work even while the bot is mid-action. */
+function setFailurePolicy(state: SimState, botId: EntityId, policy: FailurePolicy): ActionResult {
+  const runtime = state.botRuntimes[botId]
+  if (runtime === undefined) {
+    return fail('bot has no program assigned')
+  }
+  runtime.failurePolicy = policy
+  return { ok: true }
+}
+
 /**
  * The only function that mutates the world. Every action a player or bot takes flows through here.
  * (vm.ts writes directly to a bot's own entry in `SimState.botRuntimes` — that's VM-internal program
  * counter/call-stack bookkeeping, not world state, so it's exempt from this rule.)
  *
- * EDIT_PROGRAM is handled before the actor lookup: it's an editor edit, not an actor performing a
- * timed action, so it must work even while the bot it targets is mid-action.
+ * EDIT_PROGRAM and SET_FAILURE_POLICY are handled before the actor lookup: they're editor edits,
+ * not an actor performing a timed action, so they must work even while the bot is mid-action.
  */
 export function executeAction(state: SimState, actorId: EntityId, request: ActionRequest): ActionResult {
   if (request.op === 'EDIT_PROGRAM') {
     return editProgram(state, request.botId, request.instructions)
+  }
+  if (request.op === 'SET_FAILURE_POLICY') {
+    return setFailurePolicy(state, request.botId, request.policy)
   }
 
   const actor = getEntity(state, actorId)
@@ -251,6 +276,8 @@ export function executeAction(state: SimState, actorId: EntityId, request: Actio
       return giveTo(state, actor, request.target)
     case 'TAKE_FROM':
       return takeFrom(state, actor, request.target, request.item)
+    case 'WAIT':
+      return wait(state, actor, request.ticks)
     case 'BUILD':
       return build(state, actor, request.kind, request.target)
     case 'DEPLOY_BOT':

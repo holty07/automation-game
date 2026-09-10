@@ -128,6 +128,100 @@ describe('validate', () => {
     expect(result.ok).toBe(false)
     expect(result.errors.some((error) => error.includes('missing an item'))).toBe(true)
   })
+
+  it('accepts a REPEAT_UNTIL with a condition and children', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'until',
+      version: 1,
+      instructions: [
+        { id: '1', op: 'REPEAT_UNTIL', args: [], condition: { type: 'NOT_HOLDING' }, children: [moveInstruction('2')] },
+      ],
+    }
+
+    expect(validate(program, 'mk1')).toEqual({ ok: true, errors: [] })
+  })
+
+  it('rejects a REPEAT_UNTIL missing a condition', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'until',
+      version: 1,
+      instructions: [{ id: '1', op: 'REPEAT_UNTIL', args: [], children: [moveInstruction('2')] }],
+    }
+
+    const result = validate(program, 'mk1')
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.some((error) => error.includes('missing a condition'))).toBe(true)
+  })
+
+  it('rejects a REPEAT_UNTIL with no children', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'until',
+      version: 1,
+      instructions: [{ id: '1', op: 'REPEAT_UNTIL', args: [], condition: { type: 'NOT_HOLDING' } }],
+    }
+
+    const result = validate(program, 'mk1')
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.some((error) => error.includes('no children'))).toBe(true)
+  })
+
+  it('accepts an IF with only an else branch', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'if-else',
+      version: 1,
+      instructions: [
+        { id: '1', op: 'IF', args: [], condition: { type: 'NOT_HOLDING' }, elseChildren: [moveInstruction('2')] },
+      ],
+    }
+
+    expect(validate(program, 'mk1')).toEqual({ ok: true, errors: [] })
+  })
+
+  it('rejects an IF with no condition and no branches', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'if-empty',
+      version: 1,
+      instructions: [{ id: '1', op: 'IF', args: [] }],
+    }
+
+    const result = validate(program, 'mk1')
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.some((error) => error.includes('missing a condition'))).toBe(true)
+    expect(result.errors.some((error) => error.includes('no branches'))).toBe(true)
+  })
+
+  it('accepts a WAIT with a positive tick count', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'wait',
+      version: 1,
+      instructions: [{ id: '1', op: 'WAIT', args: [], waitTicks: 20 }],
+    }
+
+    expect(validate(program, 'mk1')).toEqual({ ok: true, errors: [] })
+  })
+
+  it('rejects a WAIT with a non-positive tick count', () => {
+    const program: Program = {
+      id: 'p1',
+      name: 'wait',
+      version: 1,
+      instructions: [{ id: '1', op: 'WAIT', args: [], waitTicks: 0 }],
+    }
+
+    const result = validate(program, 'mk1')
+
+    expect(result.ok).toBe(false)
+    expect(result.errors.some((error) => error.includes('positive number of ticks'))).toBe(true)
+  })
 })
 
 describe('instructionCap', () => {

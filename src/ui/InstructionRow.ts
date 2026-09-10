@@ -1,4 +1,4 @@
-import type { RepeatParams, TargetRef } from '../sim/program'
+import type { Condition, RepeatParams, TargetRef } from '../sim/program'
 import type { EntityType, ItemKind } from '../sim/types'
 import type { DropPosition, FlatRow } from './instructionTree'
 
@@ -10,6 +10,9 @@ const OPCODE_LABELS: Record<string, string> = {
   GIVE_TO: 'Give to',
   TAKE_FROM: 'Take from',
   REPEAT: 'Repeat',
+  REPEAT_UNTIL: 'Repeat until',
+  IF: 'If',
+  WAIT: 'Wait',
 }
 
 /** Entity types a bot might sensibly aim a target at — everything but the actors themselves. */
@@ -26,12 +29,23 @@ const BINDING_MODE_LABELS: Record<TargetRef['mode'], string> = {
   marker: 'Marker',
 }
 
+const CONDITION_TYPE_LABELS: Record<Condition['type'], string> = {
+  HOLDING: 'Holding',
+  NOT_HOLDING: 'Not holding anything',
+  EXISTS_NEARBY: 'Exists nearby',
+  CONTAINER_HAS: 'Container has',
+  CONTAINER_FULL: 'Container is full',
+  INVENTORY_FULL: 'Hands are full',
+}
+
 export interface InstructionRowCallbacks {
   onDelete(id: string): void
   onDuplicate(id: string): void
   onArgChange(id: string, ref: TargetRef): void
   onItemChange(id: string, item: ItemKind): void
   onRepeatParamsChange(id: string, params: RepeatParams): void
+  onConditionChange(id: string, condition: Condition): void
+  onWaitTicksChange(id: string, ticks: number): void
   onMove(sourceId: string, targetId: string, position: DropPosition): void
 }
 
@@ -165,6 +179,77 @@ function createRepeatEditor(params: RepeatParams | undefined, onChange: (params:
   return wrap
 }
 
+/** A condition type's default payload, reusing whatever compatible fields `previous` already had. */
+function defaultCondition(type: Condition['type'], previous: Condition): Condition {
+  const container = 'container' in previous ? previous.container : ({ mode: 'nearestOf', entityType: 'stockpile' } as const)
+  switch (type) {
+    case 'HOLDING':
+      return { type: 'HOLDING', item: previous.type === 'HOLDING' ? previous.item : 'log' }
+    case 'NOT_HOLDING':
+      return { type: 'NOT_HOLDING' }
+    case 'EXISTS_NEARBY':
+      return { type: 'EXISTS_NEARBY', entityType: previous.type === 'EXISTS_NEARBY' ? previous.entityType : 'tree' }
+    case 'CONTAINER_HAS':
+      return { type: 'CONTAINER_HAS', container, item: previous.type === 'CONTAINER_HAS' ? previous.item : 'log' }
+    case 'CONTAINER_FULL':
+      return { type: 'CONTAINER_FULL', container }
+    case 'INVENTORY_FULL':
+      return { type: 'INVENTORY_FULL' }
+  }
+}
+
+/** REPEAT_UNTIL and IF's condition: a type select, then per-type sub-controls. */
+function createConditionEditor(condition: Condition | undefined, onChange: (condition: Condition) => void): HTMLElement {
+  const wrap = document.createElement('span')
+  wrap.className = 'condition-editor'
+  const current = condition ?? { type: 'NOT_HOLDING' }
+
+  const typeOptions = (Object.keys(CONDITION_TYPE_LABELS) as Condition['type'][]).map((type) => ({
+    value: type,
+    label: CONDITION_TYPE_LABELS[type],
+  }))
+  wrap.append(createSelect(typeOptions, current.type, (type) => onChange(defaultCondition(type, current))))
+
+  switch (current.type) {
+    case 'HOLDING':
+      wrap.append(
+        createSelect(
+          ITEM_OPTIONS.map((item) => ({ value: item, label: item })),
+          current.item,
+          (item) => onChange({ ...current, item }),
+        ),
+      )
+      break
+    case 'EXISTS_NEARBY':
+      wrap.append(
+        createSelect(
+          TARGETABLE_ENTITY_TYPES.map((entityType) => ({ value: entityType, label: entityType })),
+          current.entityType,
+          (entityType) => onChange({ ...current, entityType }),
+        ),
+      )
+      break
+    case 'CONTAINER_HAS':
+      wrap.append(createArgEditor(current.container, (container) => onChange({ ...current, container })))
+      wrap.append(
+        createSelect(
+          ITEM_OPTIONS.map((item) => ({ value: item, label: item })),
+          current.item,
+          (item) => onChange({ ...current, item }),
+        ),
+      )
+      break
+    case 'CONTAINER_FULL':
+      wrap.append(createArgEditor(current.container, (container) => onChange({ ...current, container })))
+      break
+    case 'NOT_HOLDING':
+    case 'INVENTORY_FULL':
+      break
+  }
+
+  return wrap
+}
+
 /** Builds a fresh DOM row for one instruction. Rebuilt wholesale on every edit — instruction
  * counts are small enough that there's no need to patch an existing row in place. */
 export function createInstructionRow(row: FlatRow, highlighted: boolean, callbacks: InstructionRowCallbacks): HTMLElement {
@@ -196,8 +281,8 @@ export function createInstructionRow(row: FlatRow, highlighted: boolean, callbac
     event.preventDefault()
     const rect = element.getBoundingClientRect()
     const fraction = (event.clientY - rect.top) / rect.height
-    const position: DropPosition =
-      instruction.op === 'REPEAT' && fraction > 0.33 && fraction < 0.67 ? 'into' : fraction < 0.5 ? 'before' : 'after'
+    const canDropInto = instruction.op === 'REPEAT' || instruction.op === 'REPEAT_UNTIL' || instruction.op === 'IF'
+    const position: DropPosition = canDropInto && fraction > 0.33 && fraction < 0.67 ? 'into' : fraction < 0.5 ? 'before' : 'after'
     element.dataset.dropPosition = position
     element.classList.add(`drop-${position}`)
   })
@@ -221,6 +306,10 @@ export function createInstructionRow(row: FlatRow, highlighted: boolean, callbac
 
   if (instruction.op === 'REPEAT') {
     element.append(createRepeatEditor(instruction.params, (params) => callbacks.onRepeatParamsChange(instruction.id, params)))
+  } else if (instruction.op === 'REPEAT_UNTIL' || instruction.op === 'IF') {
+    element.append(createConditionEditor(instruction.condition, (condition) => callbacks.onConditionChange(instruction.id, condition)))
+  } else if (instruction.op === 'WAIT') {
+    element.append(createNumberInput(instruction.waitTicks ?? 20, 'wait ticks', (ticks) => callbacks.onWaitTicksChange(instruction.id, ticks)))
   } else {
     const ref = instruction.args[0]
     if (ref !== undefined) {

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { addBenchSaw, addGroundItem, addPlayer, addRock, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
+import { addBenchSaw, addBot, addGroundItem, addPlayer, addRock, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
 import { executeAction } from '../../src/sim/actions'
-import { BENCH_SAW_RECIPE } from '../../src/sim/machines'
+import { BENCH_SAW_RECIPE, CONTAINER_CAPACITY } from '../../src/sim/machines'
+import { createBotRuntime } from '../../src/sim/vm'
+import type { Program } from '../../src/sim/program'
 
 describe('executeAction', () => {
   it('rejects an unknown actor', () => {
@@ -249,6 +251,65 @@ describe('executeAction', () => {
       const result = executeAction(state, playerId, { op: 'GIVE_TO', target: stockpileId })
 
       expect(result).toEqual({ ok: false, reason: 'target is out of reach' })
+    })
+
+    it('rejects GIVE_TO once the container is at capacity', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const stockpileId = addStockpile(state, 2, 1)
+      const stockpile = getEntity(state, stockpileId)
+      const player = getEntity(state, playerId)
+      if (stockpile === undefined || player === undefined) {
+        throw new Error('missing entity')
+      }
+      stockpile.storage = { log: CONTAINER_CAPACITY }
+      player.held = 'log'
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: stockpileId })
+
+      expect(result).toEqual({ ok: false, reason: 'container is full' })
+      expect(player.held).toBe('log')
+    })
+  })
+
+  describe('WAIT', () => {
+    it('idles the actor for the requested number of ticks', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+
+      const result = executeAction(state, playerId, { op: 'WAIT', ticks: 10 })
+
+      expect(result).toEqual({ ok: true })
+      expect(getEntity(state, playerId)?.busyUntilTick).toBe(state.tick + 10)
+    })
+  })
+
+  describe('SET_FAILURE_POLICY', () => {
+    it('changes a bot’s failure policy even while it is mid-action', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+      const program: Program = { id: 'p', name: 'noop', version: 1, instructions: [] }
+      state.programs[program.id] = program
+      state.botRuntimes[botId] = createBotRuntime(program.id, program)
+      const bot = getEntity(state, botId)
+      if (bot === undefined) {
+        throw new Error('bot missing')
+      }
+      bot.busyUntilTick = state.tick + 100
+
+      const result = executeAction(state, botId, { op: 'SET_FAILURE_POLICY', botId, policy: 'skip' })
+
+      expect(result).toEqual({ ok: true })
+      expect(state.botRuntimes[botId]?.failurePolicy).toBe('skip')
+    })
+
+    it('rejects setting the policy of a bot with no program assigned', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+
+      const result = executeAction(state, botId, { op: 'SET_FAILURE_POLICY', botId, policy: 'halt' })
+
+      expect(result).toEqual({ ok: false, reason: 'bot has no program assigned' })
     })
   })
 
