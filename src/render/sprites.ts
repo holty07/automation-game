@@ -1,4 +1,5 @@
 import type { EntityType, TileType } from '../sim/types'
+import { entityImage, tileImage } from './assets'
 
 const TILE_COLOURS: Record<TileType, string> = {
   grass: '#3f7d3a',
@@ -31,11 +32,21 @@ const ENTITY_COLOURS: Record<EntityType, string> = {
 }
 
 export function drawTile(ctx: CanvasRenderingContext2D, tile: TileType, x: number, y: number, size: number): void {
+  const image = tileImage(tile)
+  if (image !== null) {
+    ctx.drawImage(image, x, y, size, size)
+    return
+  }
   ctx.fillStyle = TILE_COLOURS[tile]
   ctx.fillRect(x, y, size, size)
 }
 
 export function drawEntity(ctx: CanvasRenderingContext2D, type: EntityType, x: number, y: number, size: number): void {
+  const image = entityImage(type)
+  if (image !== null) {
+    ctx.drawImage(image, x, y, size, size)
+    return
+  }
   const inset = size * 0.15
   const drawn = size - inset * 2
   ctx.fillStyle = ENTITY_COLOURS[type]

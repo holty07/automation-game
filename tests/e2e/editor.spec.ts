@@ -3,8 +3,11 @@ import { expect, test } from '@playwright/test'
 /**
  * A recorded MOVE_TO always binds absolute (generalisation to nearestOf is M7's job), so the
  * player recording one movement and stopping gives the editor exactly one absolute-bound row to
- * flip to nearestOf. The clicked tile is one step right of the player's fixed seed-1 start, which
- * a headless check of the same scatter confirmed is always walkable.
+ * flip to nearestOf. The camera always centres the player on the canvas, so a click one tile
+ * size to the right of the canvas' own centre lands one step right of the player's fixed
+ * seed-1 start, which a headless check of the same scatter confirmed is always walkable. The
+ * canvas fills the browser viewport (M9 fullscreen pass), so its centre — not a fixed pixel
+ * offset — has to be measured rather than assumed.
  */
 test('player can open a bot’s script and flip a target from absolute to nearestOf', async ({ page }) => {
   await page.goto('/')
@@ -13,8 +16,15 @@ test('player can open a bot’s script and flip a target from absolute to neares
   // simulating minutes of real chopping/mining/farming just to reach the editor.
   await page.evaluate(() => window.__debugStockMk1?.())
 
+  const TILE_SIZE = 32
+  const canvas = page.locator('#game')
+  const box = await canvas.boundingBox()
+  if (box === null) {
+    throw new Error('#game canvas has no layout box.')
+  }
+
   await page.getByRole('button', { name: 'Record' }).click()
-  await page.locator('#game').click({ position: { x: 432, y: 300 } })
+  await canvas.click({ position: { x: box.width / 2 + TILE_SIZE, y: box.height / 2 } })
   // DEPLOY_BOT is gated by the player's own busy check, so wait for the recorded walk (4 ticks
   // at 20Hz) to finish before stopping — otherwise Stop silently fails to deploy the bot.
   await page.waitForTimeout(800)

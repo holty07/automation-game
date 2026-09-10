@@ -80,7 +80,18 @@ if (!(ui instanceof HTMLElement)) {
   throw new Error('Missing #ui element.')
 }
 
-const camera = createCamera(TILE_SIZE, canvas.width, canvas.height)
+/** Keeps the canvas' backing resolution matched to the browser window so the play area fills it. */
+function resizeCanvas(target: HTMLCanvasElement): void {
+  target.width = window.innerWidth
+  target.height = window.innerHeight
+  camera.viewportWidth = target.width
+  camera.viewportHeight = target.height
+}
+
+const camera = createCamera(TILE_SIZE, window.innerWidth, window.innerHeight)
+resizeCanvas(canvas)
+window.addEventListener('resize', () => resizeCanvas(canvas))
+
 const recorder = createRecorder()
 const toolbar = createToolbar(ui, state, playerId, recorder)
 const controls = createControls(canvas, state, camera, playerId, toolbar, recorder)

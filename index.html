@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Automation Game</title>
     <style>
-      html, body { margin: 0; height: 100%; background: #111; color: #eee; font-family: sans-serif; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: #eee; font-family: sans-serif; }
       #game { display: block; image-rendering: pixelated; background: #000; }
 
       .tutorial {
@@ -14,6 +14,11 @@
         font-size: 13px; display: flex; gap: 6px;
       }
       .tutorial-step { color: #5af; flex-shrink: 0; }
+
+      .toolbar {
+        position: fixed; left: 0; top: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+        background: #1b1b1b; padding: 8px; box-sizing: border-box;
+      }
 
       .bot-list { position: fixed; left: 0; top: 40px; width: 160px; background: #1b1b1b; padding: 8px; box-sizing: border-box; }
       .bot-list-row { display: block; width: 100%; text-align: left; margin-bottom: 4px; }
@@ -54,7 +59,7 @@
     </style>
   </head>
   <body>
-    <canvas id="game" width="800" height="600"></canvas>
+    <canvas id="game"></canvas>
     <div id="ui"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
