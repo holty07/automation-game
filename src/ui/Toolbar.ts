@@ -28,8 +28,12 @@ export function createToolbar(container: HTMLElement, state: SimState, playerId:
 
   const review = createGeneraliseReview(container)
 
+  const toolbarEl = document.createElement('div')
+  toolbarEl.className = 'toolbar'
+  container.append(toolbarEl)
+
   const heldLabel = document.createElement('span')
-  container.append(heldLabel)
+  toolbarEl.append(heldLabel)
 
   const recordButton = document.createElement('button')
   function refreshRecordButton(): void {
@@ -61,7 +65,7 @@ export function createToolbar(container: HTMLElement, state: SimState, playerId:
   }
   recordButton.addEventListener('click', onRecordClick)
   refreshRecordButton()
-  container.append(recordButton)
+  toolbarEl.append(recordButton)
 
   const buttons = new Map<BuildableType, HTMLButtonElement>()
 
@@ -80,7 +84,7 @@ export function createToolbar(container: HTMLElement, state: SimState, playerId:
     const button = document.createElement('button')
     button.addEventListener('click', () => onButtonClick(choice))
     buttons.set(choice, button)
-    container.append(button)
+    toolbarEl.append(button)
   }
   refreshButtons()
 
@@ -97,11 +101,7 @@ export function createToolbar(container: HTMLElement, state: SimState, playerId:
       heldLabel.textContent = `Holding: ${held}`
     },
     destroy(): void {
-      heldLabel.remove()
-      recordButton.remove()
-      for (const button of buttons.values()) {
-        button.remove()
-      }
+      toolbarEl.remove()
       review.destroy()
     },
   }
