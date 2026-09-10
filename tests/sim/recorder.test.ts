@@ -5,7 +5,7 @@ import { buildRecordedProgram, createRecorder } from '../../src/sim/recorder'
 import type { Recorder } from '../../src/sim/recorder'
 import { createBotRuntime } from '../../src/sim/vm'
 import { tick } from '../../src/sim/tick'
-import { addBot, addPlayer, addTree, createWorld, getEntity } from '../../src/sim/world'
+import { addBot, addPlayer, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
 import type { EntityId, SimState } from '../../src/sim/types'
 
 /** Ticks until `predicate` holds, so choreography doesn't depend on hard-coded tick counts. */
@@ -134,6 +134,12 @@ describe('recorder', () => {
   it('never records a DEPLOY_BOT action, since bots have no DEPLOY_BOT opcode', () => {
     const state = createWorld(10, 10, 1)
     const playerId = addPlayer(state, 0, 0)
+    const stockpileId = addStockpile(state, 1, 0)
+    const stockpile = getEntity(state, stockpileId)
+    if (stockpile === undefined) {
+      throw new Error('stockpile missing')
+    }
+    stockpile.storage = { plank: 4, block: 2, flour: 1 }
     const recorder = createRecorder()
     recorder.start()
     const program = buildRecordedProgram('recorded-1', 'Recorded 1', [])

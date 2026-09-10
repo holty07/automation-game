@@ -8,6 +8,13 @@
       html, body { margin: 0; height: 100%; background: #111; color: #eee; font-family: sans-serif; }
       #game { display: block; image-rendering: pixelated; background: #000; }
 
+      .tutorial {
+        position: fixed; left: 50%; top: 0; transform: translateX(-50%); max-width: 480px;
+        background: #1b1b1b; border: 1px solid #444; padding: 8px 12px; box-sizing: border-box;
+        font-size: 13px; display: flex; gap: 6px;
+      }
+      .tutorial-step { color: #5af; flex-shrink: 0; }
+
       .bot-list { position: fixed; left: 0; top: 40px; width: 160px; background: #1b1b1b; padding: 8px; box-sizing: border-box; }
       .bot-list-row { display: block; width: 100%; text-align: left; margin-bottom: 4px; }
       .bot-list-row.selected { outline: 2px solid #5af; }
@@ -19,6 +26,7 @@
       .script-editor-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
       .bot-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 8px; }
       .bot-controls input[type="text"] { width: 8em; }
+      .bot-upgrade-error { color: #f55; }
       .instruction-counter { margin-bottom: 8px; }
       .instruction-counter.over-cap { color: #f55; }
       .instruction-row {
@@ -41,6 +49,7 @@
         background: #1b1b1b; padding: 12px; box-sizing: border-box; font-size: 13px; border: 1px solid #444;
       }
       .generalise-summary { margin-bottom: 8px; }
+      .generalise-error { color: #f55; margin-top: 8px; min-height: 1em; }
       .generalise-change-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 0; }
     </style>
   </head>

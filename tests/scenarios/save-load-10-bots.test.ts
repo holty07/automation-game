@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { executeAction } from '../../src/sim/actions'
+import { BOT_TIER_COSTS } from '../../src/sim/botCosts'
 import type { Program } from '../../src/sim/program'
 import { save, load } from '../../src/sim/serialise'
 import { tick } from '../../src/sim/tick'
 import type { EntityId, SimState } from '../../src/sim/types'
-import { addPlayer, createWorld } from '../../src/sim/world'
+import { addPlayer, addStockpile, createWorld, getEntity } from '../../src/sim/world'
 import { textDump } from '../../src/debug/textDump'
 
 function moveLoopProgram(id: string, target: { x: number; y: number }): Program {
@@ -38,6 +39,20 @@ function deploy(state: SimState, playerId: EntityId, program: Program): EntityId
 function buildTenBotWorld(): SimState {
   const state = createWorld(16, 16, 7)
   const playerId = addPlayer(state, 8, 8)
+
+  // Enough materials stocked up front for all 10 Mk1 deploys — set directly rather than via
+  // GIVE_TO, so CONTAINER_CAPACITY (a per-action limit, not a data invariant) doesn't apply.
+  const stockpileId = addStockpile(state, 0, 0)
+  const stockpile = getEntity(state, stockpileId)
+  if (stockpile === undefined) {
+    throw new Error('stockpile missing')
+  }
+  const mk1Cost = BOT_TIER_COSTS.mk1
+  stockpile.storage = {
+    plank: (mk1Cost.plank ?? 0) * 10,
+    block: (mk1Cost.block ?? 0) * 10,
+    flour: (mk1Cost.flour ?? 0) * 10,
+  }
 
   const botIds = Array.from({ length: 10 }, (_, i) => deploy(state, playerId, moveLoopProgram(`prog-${i}`, { x: i, y: 0 })))
   const [bot0, bot1, bot2, bot3, bot4, bot5] = botIds

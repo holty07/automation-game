@@ -1,25 +1,31 @@
+import { BOT_TIER_COSTS, nextTier } from '../sim/botCosts'
 import type { BotTier } from '../sim/program'
 import type { Routine } from '../sim/routines'
-import type { EntityId } from '../sim/types'
+import type { EntityId, ItemKind } from '../sim/types'
 
-/** Tier select, save-as-routine, assign-routine and copy-to-bot — the M8 "scale" controls for
+export interface UpgradeOutcome {
+  ok: boolean
+  reason?: string
+}
+
+/** Tier upgrade, save-as-routine, assign-routine and copy-to-bot — the M8/M9 "scale" controls for
  * whichever bot ScriptEditor currently has open. A pure DOM-builder like InstructionRow: the
  * caller owns which bot is selected and turns callbacks into `executeAction` calls. */
 export interface BotControlsCallbacks {
-  onTierChange(tier: BotTier): void
+  /** Costed — the caller reports whether the upgrade actually happened, so a failure (not enough
+   * stocked materials) can be shown inline instead of silently doing nothing. */
+  onUpgradeTier(): UpgradeOutcome
   onSaveRoutine(name: string): void
   onAssignRoutine(routineId: string): void
   onCopyProgram(toBotId: EntityId): void
 }
 
 export interface BotControls {
-  /** Refreshes the tier value and the routine/bot option lists. Call whenever the open bot's
+  /** Refreshes the tier display and the routine/bot option lists. Call whenever the open bot's
    * program, tier or the routine library might have changed. */
   render(tier: BotTier, routines: Routine[], otherBotIds: EntityId[]): void
   destroy(): void
 }
-
-const TIERS: readonly BotTier[] = ['mk1', 'mk2', 'mk3', 'mk4']
 
 /** Rebuilds a select's options from scratch, keeping the previous selection if it still exists. */
 function refreshOptions(select: HTMLSelectElement, options: { value: string; label: string }[]): void {
@@ -36,20 +42,26 @@ function refreshOptions(select: HTMLSelectElement, options: { value: string; lab
   }
 }
 
+function costText(cost: Partial<Record<ItemKind, number>>): string {
+  return (Object.entries(cost) as [ItemKind, number][]).map(([item, count]) => `${count} ${item}`).join(', ')
+}
+
 export function createBotControls(container: HTMLElement, callbacks: BotControlsCallbacks): BotControls {
   const panel = document.createElement('div')
   panel.className = 'bot-controls'
   container.append(panel)
 
-  const tierSelect = document.createElement('select')
-  tierSelect.setAttribute('aria-label', 'bot tier')
-  for (const tier of TIERS) {
-    const option = document.createElement('option')
-    option.value = tier
-    option.textContent = tier
-    tierSelect.append(option)
-  }
-  tierSelect.addEventListener('change', () => callbacks.onTierChange(tierSelect.value as BotTier))
+  const tierLabel = document.createElement('span')
+  tierLabel.className = 'bot-tier-label'
+
+  const upgradeButton = document.createElement('button')
+  upgradeButton.addEventListener('click', () => {
+    const outcome = callbacks.onUpgradeTier()
+    upgradeError.textContent = outcome.ok ? '' : (outcome.reason ?? 'Could not upgrade.')
+  })
+
+  const upgradeError = document.createElement('span')
+  upgradeError.className = 'bot-upgrade-error'
 
   const routineNameInput = document.createElement('input')
   routineNameInput.type = 'text'
@@ -90,11 +102,31 @@ export function createBotControls(container: HTMLElement, callbacks: BotControls
     }
   })
 
-  panel.append(tierSelect, routineNameInput, saveRoutineButton, assignSelect, assignButton, copyTargetSelect, copyButton)
+  panel.append(
+    tierLabel,
+    upgradeButton,
+    upgradeError,
+    routineNameInput,
+    saveRoutineButton,
+    assignSelect,
+    assignButton,
+    copyTargetSelect,
+    copyButton,
+  )
 
   return {
     render(tier, routines, otherBotIds): void {
-      tierSelect.value = tier
+      tierLabel.textContent = `Tier: ${tier}`
+      upgradeError.textContent = ''
+
+      const target = nextTier(tier)
+      if (target === null) {
+        upgradeButton.hidden = true
+      } else {
+        upgradeButton.hidden = false
+        upgradeButton.textContent = `Upgrade to ${target} (${costText(BOT_TIER_COSTS[target])})`
+      }
+
       refreshOptions(
         assignSelect,
         routines.map((routine) => ({ value: routine.id, label: routine.name })),

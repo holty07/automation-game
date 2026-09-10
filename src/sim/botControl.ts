@@ -1,3 +1,4 @@
+import { BOT_TIER_COSTS, deductStockedCost, hasStockedCost, nextTier } from './botCosts'
 import type { BotRuntime, FailurePolicy } from './botRuntime'
 import type { BotTier, Instruction, Program } from './program'
 import { createRoutine, instantiateProgram } from './routines'
@@ -60,6 +61,26 @@ export function setBotTier(state: SimState, botId: EntityId, tier: BotTier): Edi
     return fail('bot has no program assigned')
   }
   runtime.tier = tier
+  return { ok: true }
+}
+
+/** Upgrades a bot to the next tier up, costed from stockpiles across the world (see botCosts.ts).
+ * Always the next tier from its current one — there is no skipping a tier. */
+export function upgradeBotTier(state: SimState, botId: EntityId): EditResult {
+  const runtime = state.botRuntimes[botId]
+  if (runtime === undefined) {
+    return fail('bot has no program assigned')
+  }
+  const target = nextTier(runtime.tier)
+  if (target === null) {
+    return fail('bot is already at the highest tier')
+  }
+  const cost = BOT_TIER_COSTS[target]
+  if (!hasStockedCost(state, cost)) {
+    return fail(`not enough materials in a stockpile to upgrade to ${target}`)
+  }
+  deductStockedCost(state, cost)
+  runtime.tier = target
   return { ok: true }
 }
 

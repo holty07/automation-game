@@ -1,4 +1,6 @@
-import { addPlayer, addRock, addTree, createWorld } from './sim/world'
+import { addPlayer, addRock, addStockpile, addTree, addEntity, createWorld, getEntity } from './sim/world'
+import { BOT_TIER_COSTS } from './sim/botCosts'
+import { createSoil } from './sim/farming'
 import { createLoop } from './sim/tick'
 import { createRecorder } from './sim/recorder'
 import { textDump } from './debug/textDump'
@@ -8,11 +10,23 @@ import { createControls } from './input/controls'
 import { createToolbar } from './ui/Toolbar'
 import { createBotList } from './ui/BotList'
 import { createScriptEditor } from './ui/ScriptEditor'
+import { createTutorial } from './ui/Tutorial'
+
+declare global {
+  interface Window {
+    /** Dev/e2e-test-only: stocks a stockpile beside the player with exactly the Mk1 bot cost, so
+     * Playwright specs can reach a deployed bot without simulating minutes of real gathering.
+     * Stripped from production builds — `import.meta.env.DEV` is statically false there, so Vite
+     * dead-code-eliminates the assignment entirely. */
+    __debugStockMk1?: () => void
+  }
+}
 
 const WORLD_SIZE = 64
 const TILE_SIZE = 32
 const TREE_COUNT = 24
 const ROCK_COUNT = 16
+const SOIL_COUNT = 16
 
 const state = createWorld(WORLD_SIZE, WORLD_SIZE, 1)
 const centre = Math.floor(WORLD_SIZE / 2)
@@ -31,6 +45,24 @@ function scatter(count: number, place: (x: number, y: number) => void): void {
 
 scatter(TREE_COUNT, (x, y) => addTree(state, x, y))
 scatter(ROCK_COUNT, (x, y) => addRock(state, x, y))
+scatter(SOIL_COUNT, (x, y) => addEntity(state, createSoil({ x, y })))
+
+if (import.meta.env.DEV) {
+  window.__debugStockMk1 = () => {
+    const player = getEntity(state, playerId)
+    if (player === undefined) {
+      return
+    }
+    // Placed well clear of (player.x + 1, player.y) — the tile the editor e2e spec's hardcoded
+    // click targets — so stocking materials never turns that click into a TAKE_FROM instead of
+    // the plain MOVE_TO the test expects to record.
+    const stockpileId = addStockpile(state, player.pos.x - 3, player.pos.y)
+    const stockpile = getEntity(state, stockpileId)
+    if (stockpile !== undefined) {
+      stockpile.storage = { ...BOT_TIER_COSTS.mk1 }
+    }
+  }
+}
 
 console.log(textDump(state))
 
@@ -53,12 +85,17 @@ const recorder = createRecorder()
 const toolbar = createToolbar(ui, state, playerId, recorder)
 const controls = createControls(canvas, state, camera, playerId, toolbar, recorder)
 const scriptEditor = createScriptEditor(ui, state)
-const botList = createBotList(ui, state, (botId) => scriptEditor.open(botId))
+const tutorial = createTutorial(ui, state)
+const botList = createBotList(ui, state, (botId) => {
+  scriptEditor.open(botId)
+  tutorial.notifyEditorOpened()
+})
 
 createLoop(state, (currentState, alpha) => {
   controls.update()
   toolbar.update()
   botList.update()
   scriptEditor.update()
+  tutorial.update()
   render(ctx, currentState, camera, playerId, alpha)
 })

@@ -110,7 +110,7 @@ export function createControls(
     }
 
     const container = entitiesAt(state, tile.x, tile.y).find(
-      (entity) => entity.type === 'stockpile' || entity.type === 'benchSaw',
+      (entity) => entity.type === 'stockpile' || entity.type === 'benchSaw' || entity.type === 'mill',
     )
     if (container !== undefined) {
       const path = findPathAdjacentTo(state, player.pos, container.pos)
@@ -134,7 +134,7 @@ export function createControls(
     }
 
     const resource = entitiesAt(state, tile.x, tile.y).find(
-      (entity) => entity.type === 'tree' || entity.type === 'rock',
+      (entity) => entity.type === 'tree' || entity.type === 'rock' || entity.type === 'soil' || entity.type === 'tilledSoil' || entity.type === 'wheat',
     )
     if (resource !== undefined) {
       const path = findPathAdjacentTo(state, player.pos, resource.pos)

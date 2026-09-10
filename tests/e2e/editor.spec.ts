@@ -9,6 +9,10 @@ import { expect, test } from '@playwright/test'
 test('player can open a bot’s script and flip a target from absolute to nearestOf', async ({ page }) => {
   await page.goto('/')
 
+  // Deploying a bot now costs materials (M9); stock them via the dev-only test hook rather than
+  // simulating minutes of real chopping/mining/farming just to reach the editor.
+  await page.evaluate(() => window.__debugStockMk1?.())
+
   await page.getByRole('button', { name: 'Record' }).click()
   await page.locator('#game').click({ position: { x: 432, y: 300 } })
   // DEPLOY_BOT is gated by the player's own busy check, so wait for the recorded walk (4 ticks

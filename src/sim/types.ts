@@ -6,9 +6,21 @@ import type { BotRuntime } from './vm'
 export type TileType = 'grass' | 'dirt' | 'stone' | 'water'
 
 /** An item that can be carried in hand, dropped, and picked back up. */
-export type ItemKind = 'log' | 'stone' | 'plank'
+export type ItemKind = 'log' | 'stone' | 'plank' | 'block' | 'grain' | 'flour' | 'gear' | 'circuit' | 'core'
 
-export type EntityType = 'player' | 'bot' | 'tree' | 'rock' | 'stockpile' | 'benchSaw' | ItemKind
+export type EntityType =
+  | 'player'
+  | 'bot'
+  | 'tree'
+  | 'rock'
+  | 'stockpile'
+  | 'benchSaw'
+  | 'mill'
+  | 'soil'
+  | 'tilledSoil'
+  | 'seedling'
+  | 'wheat'
+  | ItemKind
 
 export type EntityId = number
 
@@ -30,10 +42,15 @@ export interface Entity {
   held: ItemKind | null
   /** Tick at which this actor's current timed action finishes. Busy while state.tick is earlier. */
   busyUntilTick: number
-  /** Typed item store. Non-null only for containers and machines (stockpile, benchSaw). */
+  /** Typed item store. Non-null only for containers and machines (stockpile, benchSaw, mill). */
   storage: Partial<Record<ItemKind, number>> | null
-  /** Tick at which a machine's current recipe finishes. Null when idle or not a machine. */
+  /** Tick at which a machine's current recipe finishes, or a seedling's growth completes. Null
+   * when idle, not timed, or not applicable to this entity's type. */
   craftingUntilTick: number | null
+  /** The item a machine's in-progress recipe will deposit into storage once craftingUntilTick
+   * elapses. Null for non-machines (including a growing seedling, which is timed but has no
+   * storage output — it is replaced by a wheat entity instead; see stepCrops). */
+  craftingOutput: ItemKind | null
 }
 
 export interface SimState {

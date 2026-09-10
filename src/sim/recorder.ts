@@ -50,6 +50,7 @@ function targetTileFor(state: SimState, request: ActionRequest): TileRef | null 
     case 'SAVE_ROUTINE':
     case 'ASSIGN_ROUTINE':
     case 'COPY_PROGRAM':
+    case 'UPGRADE_BOT_TIER':
       // Editor edits, not player actions — never recordable.
       return null
   }
@@ -92,6 +93,7 @@ function toInstruction(id: string, request: ActionRequest, tile: TileRef): Instr
     case 'SAVE_ROUTINE':
     case 'ASSIGN_ROUTINE':
     case 'COPY_PROGRAM':
+    case 'UPGRADE_BOT_TIER':
       return null
   }
 }

@@ -47,9 +47,11 @@ export function textDump(state: SimState): string {
           .join(',')
         extra += ` storage=${contents === '' ? 'empty' : contents}`
       }
-      if (entity.type === 'benchSaw') {
+      if (entity.type === 'benchSaw' || entity.type === 'mill') {
         extra +=
-          entity.craftingUntilTick === null ? ' crafting=idle' : ` crafting=until-tick-${entity.craftingUntilTick}`
+          entity.craftingUntilTick === null
+            ? ' crafting=idle'
+            : ` crafting=until-tick-${entity.craftingUntilTick}(${entity.craftingOutput ?? '?'})`
       }
       lines.push(
         `  ${index + 1}. id=${entity.id} type=${entity.type} pos=(${entity.pos.x},${entity.pos.y}) moveTarget=${moveTarget} held=${held}${extra}`,

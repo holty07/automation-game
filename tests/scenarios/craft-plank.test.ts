@@ -4,9 +4,14 @@ import { load } from '../../src/sim/serialise'
 import { tick } from '../../src/sim/tick'
 import { executeAction } from '../../src/sim/actions'
 import { getEntity } from '../../src/sim/world'
-import { BENCH_SAW_RECIPE } from '../../src/sim/machines'
+import { BENCH_SAW_RECIPES } from '../../src/sim/machines'
 import { textDump } from '../../src/debug/textDump'
 import type { SimState } from '../../src/sim/types'
+
+const PLANK_RECIPE = BENCH_SAW_RECIPES.log
+if (PLANK_RECIPE === undefined) {
+  throw new Error('expected recipe missing')
+}
 
 function runTicks(state: SimState, count: number): void {
   for (let i = 0; i < count; i += 1) {
@@ -26,9 +31,9 @@ describe('hand-crafting a plank', () => {
     const feedResult = executeAction(state, playerId, { op: 'GIVE_TO', target: benchSawId })
     expect(feedResult.ok).toBe(true)
     expect(getEntity(state, playerId)?.held).toBeNull()
-    expect(getEntity(state, benchSawId)?.craftingUntilTick).toBe(state.tick + BENCH_SAW_RECIPE.ticks)
+    expect(getEntity(state, benchSawId)?.craftingUntilTick).toBe(state.tick + PLANK_RECIPE.ticks)
 
-    runTicks(state, BENCH_SAW_RECIPE.ticks)
+    runTicks(state, PLANK_RECIPE.ticks)
 
     // The recipe has finished: a plank is waiting in the bench saw's output, and it is idle again.
     expect(getEntity(state, benchSawId)?.craftingUntilTick).toBeNull()

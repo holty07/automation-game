@@ -23,11 +23,11 @@ function absoluteTile(instruction: Instruction): TileRef | null {
   return ref?.mode === 'absolute' ? ref.tile : null
 }
 
-/** Trees/rocks (USE) and ground items (PICK_UP) — the "renewable/ambient resources" the design
- * calls out for nearestOf binding. Buildings/machines (GIVE_TO/TAKE_FROM targets) are deliberately
- * excluded — those stay absolute. */
+/** Trees/rocks/farming fixtures (USE) and ground items (PICK_UP) — the "renewable/ambient
+ * resources" the design calls out for nearestOf binding. Buildings/machines (GIVE_TO/TAKE_FROM
+ * targets) are deliberately excluded — those stay absolute. */
 function isRenewable(type: EntityType): boolean {
-  return type === 'tree' || type === 'rock' || isItemKind(type)
+  return type === 'tree' || type === 'rock' || type === 'soil' || type === 'tilledSoil' || type === 'wheat' || isItemKind(type)
 }
 
 /** Rule: collapse a run of consecutive MOVE_TO instructions to the same absolute tile into one. */
