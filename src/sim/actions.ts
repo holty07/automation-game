@@ -2,15 +2,14 @@ import { assignRoutine, copyProgram, editProgram, saveRoutine, setBotTier, setFa
 import { hasStockedCost, BOT_TIER_COSTS, deductStockedCost } from './botCosts'
 import { createBotRuntime, type FailurePolicy } from './botRuntime'
 import { createGroundItem, getActionCost, isItemKind, staticEntity } from './entities'
-import { CONTAINER_CAPACITY, createBenchSaw, createMill, createStockpile, recipesFor, totalStored } from './machines'
+import { BUILDING_COSTS, CONTAINER_CAPACITY, createBlueprint, recipesFor, totalStored } from './machines'
 import type { BotTier, Instruction, Program } from './program'
-import type { Entity, EntityId, ItemKind, SimState, TileRef } from './types'
+import type { BuildableType, Entity, EntityId, ItemKind, SimState, TileRef } from './types'
 import { use } from './useVerb'
 import { addEntity, entitiesAt, getEntity, inBounds, isWalkable, removeEntity } from './world'
 import { findPath, isAdjacent } from './pathfind'
 
-/** Buildings the player can place on an empty tile. */
-export type BuildableType = 'stockpile' | 'benchSaw' | 'mill'
+export type { BuildableType } from './types'
 
 export type ActionRequest =
   | { op: 'MOVE_TO'; target: TileRef }
@@ -122,6 +121,22 @@ function giveTo(state: SimState, actor: Entity, targetId: EntityId): ActionResul
 
   const heldKind = actor.held
 
+  if (target.type === 'blueprint') {
+    const kind = target.blueprintOf
+    const needed = kind === null ? undefined : BUILDING_COSTS[kind][heldKind]
+    if (needed === undefined) {
+      return fail('the blueprint does not need that')
+    }
+    if ((target.storage[heldKind] ?? 0) >= needed) {
+      return fail('the blueprint already has enough of that')
+    }
+    const cost = getActionCost('GIVE_TO', heldKind)
+    target.storage[heldKind] = (target.storage[heldKind] ?? 0) + 1
+    actor.held = null
+    actor.busyUntilTick = state.tick + cost
+    return { ok: true }
+  }
+
   const recipes = recipesFor(target.type)
   if (recipes !== null) {
     const recipe = recipes[heldKind]
@@ -181,8 +196,7 @@ function build(state: SimState, actor: Entity, kind: BuildableType, target: Tile
   }
 
   const cost = getActionCost('BUILD', kind)
-  const entityData = kind === 'stockpile' ? createStockpile(target) : kind === 'benchSaw' ? createBenchSaw(target) : createMill(target)
-  const producedEntityId = addEntity(state, entityData)
+  const producedEntityId = addEntity(state, createBlueprint(kind, target))
   actor.busyUntilTick = state.tick + cost
   return { ok: true, producedEntityId }
 }

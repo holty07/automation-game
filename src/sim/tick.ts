@@ -1,6 +1,6 @@
 import type { SimState } from './types'
 import { stepMovement } from './movement'
-import { stepMachines } from './machines'
+import { stepMachines, stepBlueprints } from './machines'
 import { stepCrops } from './farming'
 import { stepBots } from './vm'
 
@@ -11,6 +11,7 @@ export function tick(state: SimState): void {
   state.tick += 1
   stepMovement(state)
   stepMachines(state)
+  stepBlueprints(state)
   stepCrops(state)
   stepBots(state)
 }

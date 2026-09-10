@@ -1,6 +1,6 @@
 import type { EntityData } from './entities'
 import { staticEntity } from './entities'
-import type { EntityType, ItemKind, SimState, TileRef } from './types'
+import type { BuildableType, EntityType, ItemKind, SimState, TileRef } from './types'
 
 export interface Recipe {
   input: ItemKind
@@ -46,6 +46,14 @@ export function recipesFor(type: EntityType): Partial<Record<ItemKind, Recipe>> 
  * yet, this just gives the CONTAINER_FULL condition something real to check. */
 export const CONTAINER_CAPACITY = 50
 
+/** Materials a blueprint needs delivered before stepBlueprints completes it into the finished
+ * building — buildings are no longer free to place, only free to plan. */
+export const BUILDING_COSTS: Record<BuildableType, Partial<Record<ItemKind, number>>> = {
+  stockpile: { plank: 2 },
+  benchSaw: { plank: 4, block: 2 },
+  mill: { plank: 4, block: 1 },
+}
+
 export function totalStored(storage: Partial<Record<ItemKind, number>>): number {
   return Object.values(storage).reduce<number>((sum, count) => sum + (count ?? 0), 0)
 }
@@ -60,6 +68,12 @@ export function createBenchSaw(pos: TileRef): EntityData {
 
 export function createMill(pos: TileRef): EntityData {
   return { ...staticEntity('mill', pos), storage: {} }
+}
+
+/** A planned building, placed by BUILD: occupies its tile like the finished building would, but
+ * starts empty and only becomes `kind` once stepBlueprints sees its storage cover BUILDING_COSTS. */
+export function createBlueprint(kind: BuildableType, pos: TileRef): EntityData {
+  return { ...staticEntity('blueprint', pos), storage: {}, blueprintOf: kind }
 }
 
 /** Finishes any machine whose recipe time has elapsed, moving its recorded output into its store.
@@ -81,5 +95,26 @@ export function stepMachines(state: SimState): void {
     if (entity.storage !== null) {
       entity.storage[output] = (entity.storage[output] ?? 0) + 1
     }
+  }
+}
+
+/** Completes any blueprint whose delivered storage now covers its full BUILDING_COSTS, turning it
+ * into the finished building in place — same id, same position, empty storage. `state.entities` is
+ * always already in ascending id order, so no sort is needed here. */
+export function stepBlueprints(state: SimState): void {
+  for (const entity of state.entities) {
+    const kind = entity.blueprintOf
+    const storage = entity.storage
+    if (entity.type !== 'blueprint' || kind === null || storage === null) {
+      continue
+    }
+    const cost = BUILDING_COSTS[kind]
+    const delivered = (Object.entries(cost) as [ItemKind, number][]).every(([item, count]) => (storage[item] ?? 0) >= count)
+    if (!delivered) {
+      continue
+    }
+    entity.type = kind
+    entity.blueprintOf = null
+    entity.storage = {}
   }
 }

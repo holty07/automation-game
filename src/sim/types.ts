@@ -16,11 +16,15 @@ export type EntityType =
   | 'stockpile'
   | 'benchSaw'
   | 'mill'
+  | 'blueprint'
   | 'soil'
   | 'tilledSoil'
   | 'seedling'
   | 'wheat'
   | ItemKind
+
+/** Buildings the player can place on an empty tile, via a blueprint. */
+export type BuildableType = 'stockpile' | 'benchSaw' | 'mill'
 
 export type EntityId = number
 
@@ -42,7 +46,8 @@ export interface Entity {
   held: ItemKind | null
   /** Tick at which this actor's current timed action finishes. Busy while state.tick is earlier. */
   busyUntilTick: number
-  /** Typed item store. Non-null only for containers and machines (stockpile, benchSaw, mill). */
+  /** Typed item store. Non-null only for containers, machines (stockpile, benchSaw, mill) and
+   * blueprints (which store delivered materials, not a finished output). */
   storage: Partial<Record<ItemKind, number>> | null
   /** Tick at which a machine's current recipe finishes, or a seedling's growth completes. Null
    * when idle, not timed, or not applicable to this entity's type. */
@@ -51,6 +56,9 @@ export interface Entity {
    * elapses. Null for non-machines (including a growing seedling, which is timed but has no
    * storage output — it is replaced by a wheat entity instead; see stepCrops). */
   craftingOutput: ItemKind | null
+  /** The building a `blueprint` entity will become once its storage covers BUILDING_COSTS for
+   * this type (see machines.ts's stepBlueprints). Null for every other entity type. */
+  blueprintOf: BuildableType | null
 }
 
 export interface SimState {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { addBenchSaw, addMill, addStockpile, createWorld, getEntity } from '../../src/sim/world'
-import { BENCH_SAW_RECIPES, MILL_RECIPES, recipesFor, stepMachines } from '../../src/sim/machines'
+import { addBenchSaw, addEntity, addMill, addStockpile, createWorld, getEntity } from '../../src/sim/world'
+import { BENCH_SAW_RECIPES, BUILDING_COSTS, MILL_RECIPES, createBlueprint, recipesFor, stepBlueprints, stepMachines } from '../../src/sim/machines'
 
 const PLANK_RECIPE = BENCH_SAW_RECIPES.log
 const FLOUR_RECIPE = MILL_RECIPES.grain
@@ -134,5 +134,88 @@ describe('recipesFor', () => {
   it('returns null for anything that is not a machine', () => {
     expect(recipesFor('stockpile')).toBeNull()
     expect(recipesFor('tree')).toBeNull()
+  })
+})
+
+describe('blueprints', () => {
+  it('creates a blueprint with an empty store, holding its target building', () => {
+    const state = createWorld(5, 5, 1)
+    const blueprintId = addEntity(state, createBlueprint('stockpile', { x: 1, y: 1 }))
+
+    const blueprint = getEntity(state, blueprintId)
+    expect(blueprint?.type).toBe('blueprint')
+    expect(blueprint?.blueprintOf).toBe('stockpile')
+    expect(blueprint?.storage).toEqual({})
+  })
+
+  it('leaves an under-stocked blueprint alone', () => {
+    const state = createWorld(5, 5, 1)
+    const blueprintId = addEntity(state, createBlueprint('stockpile', { x: 1, y: 1 }))
+    const blueprint = getEntity(state, blueprintId)
+    if (blueprint === undefined) {
+      throw new Error('blueprint missing')
+    }
+    blueprint.storage = { plank: (BUILDING_COSTS.stockpile.plank ?? 1) - 1 }
+
+    stepBlueprints(state)
+
+    expect(getEntity(state, blueprintId)?.type).toBe('blueprint')
+  })
+
+  it('leaves a multi-item blueprint alone when one item is fully delivered but another is still short', () => {
+    const state = createWorld(5, 5, 1)
+    const blueprintId = addEntity(state, createBlueprint('benchSaw', { x: 1, y: 1 }))
+    const blueprint = getEntity(state, blueprintId)
+    if (blueprint === undefined) {
+      throw new Error('blueprint missing')
+    }
+    blueprint.storage = { plank: BUILDING_COSTS.benchSaw.plank, block: (BUILDING_COSTS.benchSaw.block ?? 1) - 1 }
+
+    stepBlueprints(state)
+
+    expect(getEntity(state, blueprintId)?.type).toBe('blueprint')
+  })
+
+  it('converts a fully-stocked blueprint into its finished building, at the same id and position, resetting storage', () => {
+    const state = createWorld(5, 5, 1)
+    const blueprintId = addEntity(state, createBlueprint('benchSaw', { x: 2, y: 3 }))
+    const blueprint = getEntity(state, blueprintId)
+    if (blueprint === undefined) {
+      throw new Error('blueprint missing')
+    }
+    blueprint.storage = { ...BUILDING_COSTS.benchSaw }
+
+    stepBlueprints(state)
+
+    const finished = getEntity(state, blueprintId)
+    expect(finished?.type).toBe('benchSaw')
+    expect(finished?.blueprintOf).toBeNull()
+    expect(finished?.storage).toEqual({})
+    expect(finished?.pos).toEqual({ x: 2, y: 3 })
+  })
+
+  it('converts once storage meets or exceeds every required item, not just equals it', () => {
+    const state = createWorld(5, 5, 1)
+    const blueprintId = addEntity(state, createBlueprint('mill', { x: 0, y: 0 }))
+    const blueprint = getEntity(state, blueprintId)
+    if (blueprint === undefined) {
+      throw new Error('blueprint missing')
+    }
+    blueprint.storage = {
+      plank: (BUILDING_COSTS.mill.plank ?? 0) + 5,
+      block: (BUILDING_COSTS.mill.block ?? 0) + 5,
+    }
+
+    stepBlueprints(state)
+
+    expect(getEntity(state, blueprintId)?.type).toBe('mill')
+  })
+
+  it('leaves non-blueprint entities alone', () => {
+    const state = createWorld(5, 5, 1)
+    const stockpileId = addStockpile(state, 1, 1)
+
+    expect(() => stepBlueprints(state)).not.toThrow()
+    expect(getEntity(state, stockpileId)?.type).toBe('stockpile')
   })
 })

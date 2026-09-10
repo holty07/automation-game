@@ -26,6 +26,7 @@ const TARGETABLE_ENTITY_TYPES: EntityType[] = [
   'stockpile',
   'benchSaw',
   'mill',
+  'blueprint',
   'log',
   'stone',
   'plank',

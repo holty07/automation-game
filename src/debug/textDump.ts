@@ -53,6 +53,9 @@ export function textDump(state: SimState): string {
             ? ' crafting=idle'
             : ` crafting=until-tick-${entity.craftingUntilTick}(${entity.craftingOutput ?? '?'})`
       }
+      if (entity.type === 'blueprint') {
+        extra += ` blueprintOf=${entity.blueprintOf ?? '?'}`
+      }
       lines.push(
         `  ${index + 1}. id=${entity.id} type=${entity.type} pos=(${entity.pos.x},${entity.pos.y}) moveTarget=${moveTarget} held=${held}${extra}`,
       )
