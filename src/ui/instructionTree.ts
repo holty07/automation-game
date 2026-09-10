@@ -8,6 +8,16 @@ export interface FlatRow {
   isImplicitRoot: boolean
 }
 
+/** Appends a new instruction to the end of the program's user-visible top level — inside the
+ * implicit outer REPEAT forever's children, if the program has been wrapped, otherwise the root. */
+export function appendInstruction(root: Instruction[], instruction: Instruction): Instruction[] {
+  const only = root.length === 1 ? root[0] : undefined
+  if (only !== undefined && only.op === 'REPEAT' && only.params?.mode === 'forever') {
+    return [{ ...only, children: [...(only.children ?? []), instruction] }]
+  }
+  return [...root, instruction]
+}
+
 function isImplicitOuterRepeat(root: Instruction[], instruction: Instruction, depth: number): boolean {
   return (
     depth === 0 &&
@@ -18,7 +28,8 @@ function isImplicitOuterRepeat(root: Instruction[], instruction: Instruction, de
   )
 }
 
-/** Depth-first row list for rendering: one row per instruction, indented by nesting depth. */
+/** Depth-first row list for rendering: one row per instruction, indented by nesting depth. IF's
+ * elseChildren render as further rows at the same depth as children, right after them. */
 export function flattenForDisplay(root: Instruction[]): FlatRow[] {
   const rows: FlatRow[] = []
   function walk(list: Instruction[], depth: number): void {
@@ -26,6 +37,9 @@ export function flattenForDisplay(root: Instruction[]): FlatRow[] {
       rows.push({ instruction, depth, isImplicitRoot: isImplicitOuterRepeat(root, instruction, depth) })
       if (instruction.children !== undefined) {
         walk(instruction.children, depth + 1)
+      }
+      if (instruction.elseChildren !== undefined) {
+        walk(instruction.elseChildren, depth + 1)
       }
     }
   }
@@ -44,14 +58,24 @@ function removeRec(list: Instruction[], id: string): { list: Instruction[]; remo
   }
   for (let i = 0; i < list.length; i += 1) {
     const current = list[i]
-    if (current?.children === undefined) {
+    if (current === undefined) {
       continue
     }
-    const result = removeRec(current.children, id)
-    if (result !== null) {
-      const next = [...list]
-      next[i] = { ...current, children: result.list }
-      return { list: next, removed: result.removed }
+    if (current.children !== undefined) {
+      const result = removeRec(current.children, id)
+      if (result !== null) {
+        const next = [...list]
+        next[i] = { ...current, children: result.list }
+        return { list: next, removed: result.removed }
+      }
+    }
+    if (current.elseChildren !== undefined) {
+      const result = removeRec(current.elseChildren, id)
+      if (result !== null) {
+        const next = [...list]
+        next[i] = { ...current, elseChildren: result.list }
+        return { list: next, removed: result.removed }
+      }
     }
   }
   return null
@@ -83,14 +107,24 @@ function insertAfterRec(list: Instruction[], id: string, makeNode: (found: Instr
   }
   for (let i = 0; i < list.length; i += 1) {
     const current = list[i]
-    if (current?.children === undefined) {
+    if (current === undefined) {
       continue
     }
-    const updatedChildren = insertAfterRec(current.children, id, makeNode)
-    if (updatedChildren !== null) {
-      const next = [...list]
-      next[i] = { ...current, children: updatedChildren }
-      return next
+    if (current.children !== undefined) {
+      const updatedChildren = insertAfterRec(current.children, id, makeNode)
+      if (updatedChildren !== null) {
+        const next = [...list]
+        next[i] = { ...current, children: updatedChildren }
+        return next
+      }
+    }
+    if (current.elseChildren !== undefined) {
+      const updatedElseChildren = insertAfterRec(current.elseChildren, id, makeNode)
+      if (updatedElseChildren !== null) {
+        const next = [...list]
+        next[i] = { ...current, elseChildren: updatedElseChildren }
+        return next
+      }
     }
   }
   return null
@@ -115,10 +149,14 @@ export function updateInstruction(
         found = true
         return update(instruction)
       }
-      if (instruction.children !== undefined) {
-        return { ...instruction, children: walk(instruction.children) }
+      let next = instruction
+      if (next.children !== undefined) {
+        next = { ...next, children: walk(next.children) }
       }
-      return instruction
+      if (next.elseChildren !== undefined) {
+        next = { ...next, elseChildren: walk(next.elseChildren) }
+      }
+      return next
     })
   }
   const next = walk(root)
@@ -129,7 +167,7 @@ function containsId(instruction: Instruction, id: string): boolean {
   if (instruction.id === id) {
     return true
   }
-  return (instruction.children ?? []).some((child) => containsId(child, id))
+  return (instruction.children ?? []).some((child) => containsId(child, id)) || (instruction.elseChildren ?? []).some((child) => containsId(child, id))
 }
 
 function insertRelative(
@@ -155,14 +193,24 @@ function insertRelative(
   }
   for (let i = 0; i < list.length; i += 1) {
     const current = list[i]
-    if (current?.children === undefined) {
+    if (current === undefined) {
       continue
     }
-    const updatedChildren = insertRelative(current.children, node, targetId, position)
-    if (updatedChildren !== null) {
-      const next = [...list]
-      next[i] = { ...current, children: updatedChildren }
-      return next
+    if (current.children !== undefined) {
+      const updatedChildren = insertRelative(current.children, node, targetId, position)
+      if (updatedChildren !== null) {
+        const next = [...list]
+        next[i] = { ...current, children: updatedChildren }
+        return next
+      }
+    }
+    if (current.elseChildren !== undefined) {
+      const updatedElseChildren = insertRelative(current.elseChildren, node, targetId, position)
+      if (updatedElseChildren !== null) {
+        const next = [...list]
+        next[i] = { ...current, elseChildren: updatedElseChildren }
+        return next
+      }
     }
   }
   return null

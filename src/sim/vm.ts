@@ -1,13 +1,14 @@
 import type { ActionRequest } from './actions'
 import { executeAction, isActorBusy } from './actions'
 import type { BotRuntime, Frame } from './botRuntime'
+import { evaluateCondition } from './conditions'
 import { isItemKind } from './entities'
 import { findPathAdjacentTo } from './pathfind'
 import type { Instruction } from './program'
 import type { ResolvedTarget } from './targeting'
-import { resolveTarget } from './targeting'
+import { resolveEntityTarget, resolveTarget } from './targeting'
 import type { Entity, EntityId, SimState, TileRef } from './types'
-import { entitiesAt, getEntity, isWalkable } from './world'
+import { getEntity, isWalkable } from './world'
 
 export type { BotRuntime, BotStatus, CurrentAction, FailurePolicy, Frame } from './botRuntime'
 export { createBotRuntime, currentInstructionId } from './botRuntime'
@@ -57,22 +58,6 @@ interface ExecOutcome {
   reason?: string
 }
 
-/**
- * An `absolute`/`marker` binding resolves to a tile (e.g. "that exact chest"'s location), not the
- * chest itself, so ops that need an entity (USE, PICK_UP, GIVE_TO, TAKE_FROM) look one up at that
- * tile matching `isMatch`. A `nearestOf`/`inArea` binding already resolved straight to an entity.
- */
-function resolveEntityTarget(state: SimState, resolved: ResolvedTarget, isMatch: (entity: Entity) => boolean): EntityId | null {
-  if (resolved.kind === 'entity') {
-    return resolved.id
-  }
-  if (resolved.kind === 'tile') {
-    const entity = entitiesAt(state, resolved.tile.x, resolved.tile.y).find(isMatch)
-    return entity === undefined ? null : entity.id
-  }
-  return null
-}
-
 function buildRequest(
   state: SimState,
   actor: Entity,
@@ -111,7 +96,12 @@ function buildRequest(
       return { request: { op: 'TAKE_FROM', target: id, item: instruction.item } }
     }
     case 'REPEAT':
-      return { reason: 'REPEAT cannot be executed as an action' }
+    case 'REPEAT_UNTIL':
+    case 'IF':
+    case 'WAIT':
+      // Control flow (REPEAT/REPEAT_UNTIL/IF) and WAIT are handled directly in stepBot's loop —
+      // they never reach buildRequest, which only builds requests for target-bearing actions.
+      return { reason: `${instruction.op} cannot be executed as an action` }
   }
 }
 
@@ -144,6 +134,16 @@ function tryExecuteInstruction(
 
   const output = result.producedEntityId === undefined ? resolved : entityResolvedTarget(state, result.producedEntityId)
   return { ok: true, result: output }
+}
+
+/** WAIT has no target to resolve — it just idles the actor for its own duration. */
+function tryExecuteWait(state: SimState, botId: EntityId, instruction: Instruction): ExecOutcome {
+  const ticks = instruction.waitTicks
+  if (ticks === undefined || ticks <= 0) {
+    return { ok: false, reason: 'WAIT instruction is missing a duration' }
+  }
+  const result = executeAction(state, botId, { op: 'WAIT', ticks })
+  return result.ok ? { ok: true, result: null } : { ok: false, reason: result.reason ?? 'WAIT failed' }
 }
 
 function applyFailurePolicy(runtime: BotRuntime, frame: Frame, reason: string, tick: number): void {
@@ -196,7 +196,14 @@ function stepBot(state: SimState, botId: EntityId, runtime: BotRuntime): void {
     }
 
     if (frame.index >= frame.instructions.length) {
-      if (frame.iterationsLeft === null) {
+      if (frame.untilCondition !== undefined) {
+        const done = evaluateCondition(state, botId, frame.untilCondition, runtime.lastResult)
+        if (done) {
+          runtime.frames.pop()
+        } else {
+          frame.index = 0
+        }
+      } else if (frame.iterationsLeft === null) {
         frame.index = 0
       } else {
         frame.iterationsLeft -= 1
@@ -223,7 +230,34 @@ function stepBot(state: SimState, botId: EntityId, runtime: BotRuntime): void {
       continue
     }
 
-    const outcome = tryExecuteInstruction(state, botId, actor, instruction, runtime.lastResult)
+    if (instruction.op === 'REPEAT_UNTIL') {
+      frame.index += 1
+      // A malformed instruction (no condition) degrades to a no-op rather than looping forever
+      // with no way to ever stop — bots never throw, but they don't hang the tick either.
+      if (instruction.condition === undefined) {
+        continue
+      }
+      runtime.frames.push({
+        instructions: instruction.children ?? [],
+        index: 0,
+        iterationsLeft: null,
+        untilCondition: instruction.condition,
+      })
+      continue
+    }
+
+    if (instruction.op === 'IF') {
+      frame.index += 1
+      const conditionMet = instruction.condition !== undefined && evaluateCondition(state, botId, instruction.condition, runtime.lastResult)
+      const branch = conditionMet ? instruction.children : instruction.elseChildren
+      if (branch !== undefined && branch.length > 0) {
+        runtime.frames.push({ instructions: branch, index: 0, iterationsLeft: 1 })
+      }
+      continue
+    }
+
+    const outcome =
+      instruction.op === 'WAIT' ? tryExecuteWait(state, botId, instruction) : tryExecuteInstruction(state, botId, actor, instruction, runtime.lastResult)
     if (outcome.ok) {
       frame.index += 1
       runtime.lastResult = outcome.result ?? null

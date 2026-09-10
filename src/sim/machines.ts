@@ -14,6 +14,14 @@ export const BENCH_SAW_RECIPE: Recipe = {
   ticks: 80,
 }
 
+/** Flat cap on total items (summed across kinds) a container can hold — no economy tuning exists
+ * yet, this just gives the CONTAINER_FULL condition something real to check. */
+export const CONTAINER_CAPACITY = 50
+
+export function totalStored(storage: Partial<Record<ItemKind, number>>): number {
+  return Object.values(storage).reduce<number>((sum, count) => sum + (count ?? 0), 0)
+}
+
 export function createStockpile(pos: TileRef): EntityData {
   return { ...staticEntity('stockpile', pos), storage: {} }
 }

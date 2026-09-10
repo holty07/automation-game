@@ -1,4 +1,4 @@
-import type { Instruction, Opcode, Program } from './program'
+import type { Condition, Instruction, Opcode, Program } from './program'
 import type { ResolvedTarget } from './targeting'
 import type { EntityId, TileRef } from './types'
 
@@ -8,6 +8,9 @@ export interface Frame {
   index: number
   /** null = loop forever (REPEAT forever); otherwise passes left, decremented each completed pass. */
   iterationsLeft: number | null
+  /** REPEAT_UNTIL only: re-checked each time this frame runs off the end of its instructions —
+   * true pops the frame, false loops again. Takes priority over iterationsLeft when present. */
+  untilCondition?: Condition
 }
 
 export type FailurePolicy = 'wait' | 'skip' | 'halt'
