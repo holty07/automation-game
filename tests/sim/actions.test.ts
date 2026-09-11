@@ -3,7 +3,7 @@ import { addBenchSaw, addBot, addEntity, addGroundItem, addMill, addPlayer, addR
 import { executeAction } from '../../src/sim/actions'
 import { BOT_TIER_COSTS } from '../../src/sim/botCosts'
 import { createSoil, createTilledSoil, createWheat, WHEAT_GROW_TICKS } from '../../src/sim/farming'
-import { BENCH_SAW_RECIPES, CONTAINER_CAPACITY, MILL_RECIPES } from '../../src/sim/machines'
+import { BENCH_SAW_RECIPES, BUILDING_COSTS, CONTAINER_CAPACITY, MILL_RECIPES, stepBlueprints } from '../../src/sim/machines'
 import { createBotRuntime } from '../../src/sim/vm'
 import type { Instruction, Program } from '../../src/sim/program'
 import type { EntityId, SimState } from '../../src/sim/types'
@@ -479,7 +479,7 @@ describe('executeAction', () => {
   })
 
   describe('BUILD', () => {
-    it('places a stockpile on an empty adjacent tile', () => {
+    it('places a stockpile blueprint on an empty adjacent tile, not the finished stockpile', () => {
       const state = createWorld(5, 5, 1)
       const playerId = addPlayer(state, 1, 1)
 
@@ -487,11 +487,12 @@ describe('executeAction', () => {
 
       expect(result.ok).toBe(true)
       const built = getEntity(state, result.producedEntityId ?? -1)
-      expect(built?.type).toBe('stockpile')
+      expect(built?.type).toBe('blueprint')
+      expect(built?.blueprintOf).toBe('stockpile')
       expect(built?.storage).toEqual({})
     })
 
-    it('places a bench saw on an empty adjacent tile', () => {
+    it('places a bench saw blueprint on an empty adjacent tile', () => {
       const state = createWorld(5, 5, 1)
       const playerId = addPlayer(state, 1, 1)
 
@@ -499,11 +500,12 @@ describe('executeAction', () => {
 
       expect(result.ok).toBe(true)
       const built = getEntity(state, result.producedEntityId ?? -1)
-      expect(built?.type).toBe('benchSaw')
+      expect(built?.type).toBe('blueprint')
+      expect(built?.blueprintOf).toBe('benchSaw')
       expect(built?.craftingUntilTick).toBeNull()
     })
 
-    it('places a mill on an empty adjacent tile', () => {
+    it('places a mill blueprint on an empty adjacent tile', () => {
       const state = createWorld(5, 5, 1)
       const playerId = addPlayer(state, 1, 1)
 
@@ -511,8 +513,89 @@ describe('executeAction', () => {
 
       expect(result.ok).toBe(true)
       const built = getEntity(state, result.producedEntityId ?? -1)
-      expect(built?.type).toBe('mill')
+      expect(built?.type).toBe('blueprint')
+      expect(built?.blueprintOf).toBe('mill')
       expect(built?.storage).toEqual({})
+    })
+
+    it('a fully-delivered blueprint becomes its finished building once stepBlueprints runs', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      const buildResult = executeAction(state, playerId, { op: 'BUILD', kind: 'stockpile', target: { x: 2, y: 1 } })
+      const blueprintId = buildResult.producedEntityId
+      if (blueprintId === undefined) {
+        throw new Error('blueprint missing')
+      }
+      const logCost = BUILDING_COSTS.stockpile.log ?? 0
+
+      // Deliver every log but one -- still short, so it must not complete.
+      for (let i = 0; i < logCost - 1; i += 1) {
+        player.held = 'log'
+        player.busyUntilTick = state.tick // each GIVE_TO leaves the actor busy; clear it between calls
+        expect(executeAction(state, playerId, { op: 'GIVE_TO', target: blueprintId }).ok).toBe(true)
+      }
+      stepBlueprints(state)
+      expect(getEntity(state, blueprintId)?.type).toBe('blueprint')
+
+      // Deliver the last log -- now it must complete.
+      player.held = 'log'
+      player.busyUntilTick = state.tick
+      expect(executeAction(state, playerId, { op: 'GIVE_TO', target: blueprintId }).ok).toBe(true)
+      stepBlueprints(state)
+
+      const finished = getEntity(state, blueprintId)
+      expect(finished?.type).toBe('stockpile')
+      expect(finished?.blueprintOf).toBeNull()
+      expect(finished?.storage).toEqual({})
+    })
+
+    it('rejects delivering an item a blueprint does not need', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      const buildResult = executeAction(state, playerId, { op: 'BUILD', kind: 'stockpile', target: { x: 2, y: 1 } })
+      const blueprintId = buildResult.producedEntityId
+      if (blueprintId === undefined) {
+        throw new Error('blueprint missing')
+      }
+      player.held = 'flour'
+      player.busyUntilTick = state.tick // BUILD left the actor busy
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: blueprintId })
+
+      expect(result).toEqual({ ok: false, reason: 'the blueprint does not need that' })
+    })
+
+    it('rejects delivering an item once the blueprint already has enough of it', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      const buildResult = executeAction(state, playerId, { op: 'BUILD', kind: 'stockpile', target: { x: 2, y: 1 } })
+      const blueprintId = buildResult.producedEntityId
+      if (blueprintId === undefined) {
+        throw new Error('blueprint missing')
+      }
+      const blueprint = getEntity(state, blueprintId)
+      if (blueprint === undefined || blueprint.storage === null) {
+        throw new Error('blueprint missing storage')
+      }
+      blueprint.storage.log = BUILDING_COSTS.stockpile.log
+      player.held = 'log'
+      player.busyUntilTick = state.tick // BUILD left the actor busy
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: blueprintId })
+
+      expect(result).toEqual({ ok: false, reason: 'the blueprint already has enough of that' })
     })
 
     it('rejects BUILD outside the world', () => {

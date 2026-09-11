@@ -90,6 +90,7 @@ export function staticEntity(type: EntityType, pos: TileRef): EntityData {
     storage: null,
     craftingUntilTick: null,
     craftingOutput: null,
+    blueprintOf: null,
   }
 }
 

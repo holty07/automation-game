@@ -384,3 +384,33 @@ Read AGENTS.md first. Branch: m9-game. Implement M9 only.
 Done when: a fresh player reaches their first working recorded bot within 10 minutes
 with no outside help, and pnpm verify is green.
 ```
+
+---
+
+## M10 — Blueprints
+
+```
+Read AGENTS.md first. Branch: m10-blueprints. Implement M10 only.
+
+- New `blueprint` entity type: BUILD now places a blueprint holding a target
+  BuildableType and a material cost, not the finished building outright
+- BUILDING_COSTS table (botCosts.ts pattern) for stockpile / benchSaw / mill --
+  buildings are no longer free
+- Reuse the existing GIVE_TO opcode to deliver materials into a blueprint's
+  storage. No new opcode. A blueprint only accepts the item kinds its recipe needs
+- stepBlueprints(): once a blueprint's storage covers its full cost, consume the
+  cost and replace the blueprint with the finished building at the same position
+  and id, mirroring stepMachines in machines.ts
+- A player must be able to record TAKE_FROM (stockpile) -> MOVE_TO -> GIVE_TO
+  (blueprint) and hand that recording to a bot, which keeps delivering until the
+  blueprint completes, then goes idle/confused rather than erroring (no target
+  left to deliver to)
+
+Tests: a fixture with a part-stocked blueprint; drive executeAction through a
+completing GIVE_TO and assert the blueprint becomes the real building with
+materials deducted. A second scenario: a bot running a hand-written REPEAT-forever
+delivery program empties a stockpile into an untouched blueprint and completes it
+unattended.
+
+Done when: both tests pass and pnpm verify is green.
+```

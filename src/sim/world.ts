@@ -9,7 +9,7 @@ const DEFAULT_TILE: TileType = 'grass'
 /** Entity types that occupy their tile exclusively — nothing else can walk onto or path through it.
  * Farming fixtures (soil, tilled soil, seedlings, wheat) are deliberately excluded — a field should
  * be walkable, not a maze. */
-const BLOCKING_TYPES = new Set(['tree', 'rock', 'stockpile', 'benchSaw', 'mill'])
+const BLOCKING_TYPES = new Set(['tree', 'rock', 'stockpile', 'benchSaw', 'mill', 'blueprint'])
 
 export function createWorld(width: number, height: number, seed: number): SimState {
   return {
@@ -80,6 +80,7 @@ export function addPlayer(state: SimState, x: number, y: number): EntityId {
     storage: null,
     craftingUntilTick: null,
     craftingOutput: null,
+    blueprintOf: null,
   })
 }
 
