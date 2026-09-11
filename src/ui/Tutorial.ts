@@ -1,4 +1,4 @@
-import type { SimState } from '../sim/types'
+import type { ItemKind, SimState } from '../sim/types'
 
 interface Hint {
   text: string
@@ -7,15 +7,25 @@ interface Hint {
   isComplete(state: SimState): boolean
 }
 
-/** True once at least one entity of `type` exists anywhere in the world. */
+/** True once at least one entity of `type` exists anywhere in the world. Only meaningful for
+ * buildings and bots, which are always their own standalone entity. */
 function hasEntity(state: SimState, type: string): boolean {
   return state.entities.some((entity) => entity.type === type)
+}
+
+/** True once `kind` exists anywhere: as a ground item, held by an actor, or sitting in some
+ * machine's or container's storage. Crafted materials (planks, blocks, flour) are produced
+ * straight into the bench saw's/mill's own storage, then usually carried by hand or into a
+ * stockpile -- they rarely ever touch the ground, so checking only for a standalone item entity
+ * (as hasEntity does) would almost never trigger. */
+function hasItem(state: SimState, kind: ItemKind): boolean {
+  return state.entities.some((entity) => entity.type === kind || entity.held === kind || (entity.storage?.[kind] ?? 0) > 0)
 }
 
 export const TUTORIAL_HINTS: readonly Hint[] = [
   {
     text: 'Chop a tree — click one nearby to gather a log.',
-    isComplete: (state) => hasEntity(state, 'log'),
+    isComplete: (state) => hasItem(state, 'log'),
   },
   {
     text: 'Click Build Stockpile, then click an empty tile nearby to place it. Carry logs over and give them to it — hover over it to see what it still needs.',
@@ -27,7 +37,7 @@ export const TUTORIAL_HINTS: readonly Hint[] = [
   },
   {
     text: 'Once your bench saw is built, feed it logs for planks and stone for blocks.',
-    isComplete: (state) => hasEntity(state, 'plank') && hasEntity(state, 'block'),
+    isComplete: (state) => hasItem(state, 'plank') && hasItem(state, 'block'),
   },
   {
     text: 'Build a mill the same way — it needs planks and a block delivered.',
@@ -35,7 +45,7 @@ export const TUTORIAL_HINTS: readonly Hint[] = [
   },
   {
     text: 'Till a patch of soil, sow it, wait for the wheat to grow, harvest it, then feed the grain to your mill for flour.',
-    isComplete: (state) => hasEntity(state, 'flour'),
+    isComplete: (state) => hasItem(state, 'flour'),
   },
   {
     text: 'Stock 4 planks, 2 blocks and 1 flour in a stockpile, then Record yourself chopping a tree, Stop, and Assign it to build your first bot.',
