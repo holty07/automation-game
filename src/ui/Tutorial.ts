@@ -7,21 +7,39 @@ interface Hint {
   isComplete(state: SimState): boolean
 }
 
-const HINTS: readonly Hint[] = [
+/** True once at least one entity of `type` exists anywhere in the world. */
+function hasEntity(state: SimState, type: string): boolean {
+  return state.entities.some((entity) => entity.type === type)
+}
+
+export const TUTORIAL_HINTS: readonly Hint[] = [
   {
     text: 'Chop a tree — click one nearby to gather a log.',
-    isComplete: (state) => state.entities.some((entity) => entity.type === 'log'),
+    isComplete: (state) => hasEntity(state, 'log'),
   },
   {
-    text: 'Craft: build a bench saw, feed it logs and stone for planks and blocks. Till, sow, harvest and mill wheat for flour.',
-    isComplete: (state) =>
-      state.entities.some((entity) => entity.type === 'plank') &&
-      state.entities.some((entity) => entity.type === 'block') &&
-      state.entities.some((entity) => entity.type === 'flour'),
+    text: 'Click Build Stockpile, then click an empty tile nearby to place it. Carry logs over and give them to it — hover over it to see what it still needs.',
+    isComplete: (state) => hasEntity(state, 'stockpile'),
   },
   {
-    text: 'Stock 4 planks, 2 blocks and 1 flour in a stockpile, then Record a task, Stop, and Assign it to build your first bot.',
-    isComplete: (state) => state.entities.some((entity) => entity.type === 'bot'),
+    text: "Build a bench saw the same way — it needs logs and stone delivered before it's finished.",
+    isComplete: (state) => hasEntity(state, 'benchSaw'),
+  },
+  {
+    text: 'Once your bench saw is built, feed it logs for planks and stone for blocks.',
+    isComplete: (state) => hasEntity(state, 'plank') && hasEntity(state, 'block'),
+  },
+  {
+    text: 'Build a mill the same way — it needs planks and a block delivered.',
+    isComplete: (state) => hasEntity(state, 'mill'),
+  },
+  {
+    text: 'Till a patch of soil, sow it, wait for the wheat to grow, harvest it, then feed the grain to your mill for flour.',
+    isComplete: (state) => hasEntity(state, 'flour'),
+  },
+  {
+    text: 'Stock 4 planks, 2 blocks and 1 flour in a stockpile, then Record yourself chopping a tree, Stop, and Assign it to build your first bot.',
+    isComplete: (state) => hasEntity(state, 'bot'),
   },
   {
     text: 'Click your bot in the list to open its script and see what it is doing.',
@@ -52,13 +70,13 @@ export function createTutorial(container: HTMLElement, state: SimState): Tutoria
   panel.append(step, text)
 
   function render(): void {
-    const hint = HINTS[index]
+    const hint = TUTORIAL_HINTS[index]
     if (hint === undefined) {
       panel.hidden = true
       return
     }
     panel.hidden = false
-    step.textContent = `Step ${index + 1}/${HINTS.length}:`
+    step.textContent = `Step ${index + 1}/${TUTORIAL_HINTS.length}:`
     text.textContent = hint.text
   }
 
@@ -69,11 +87,11 @@ export function createTutorial(container: HTMLElement, state: SimState): Tutoria
       editorOpened = true
     },
     update(): void {
-      const hint = HINTS[index]
+      const hint = TUTORIAL_HINTS[index]
       if (hint === undefined) {
         return
       }
-      const done = index === HINTS.length - 1 ? editorOpened : hint.isComplete(state)
+      const done = index === TUTORIAL_HINTS.length - 1 ? editorOpened : hint.isComplete(state)
       if (done) {
         index += 1
         render()
