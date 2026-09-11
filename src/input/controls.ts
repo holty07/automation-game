@@ -110,7 +110,7 @@ export function createControls(
     }
 
     const container = entitiesAt(state, tile.x, tile.y).find(
-      (entity) => entity.type === 'stockpile' || entity.type === 'benchSaw' || entity.type === 'mill',
+      (entity) => entity.type === 'stockpile' || entity.type === 'benchSaw' || entity.type === 'mill' || entity.type === 'blueprint',
     )
     if (container !== undefined) {
       const path = findPathAdjacentTo(state, player.pos, container.pos)
