@@ -53,13 +53,13 @@ describe('describeEntity', () => {
     if (blueprint === undefined) {
       throw new Error('blueprint missing')
     }
-    blueprint.storage = { plank: 1 }
+    blueprint.storage = { log: 1 }
 
     const lines = describeEntity(state, blueprint)
 
     expect(lines[0]).toBe('Bench Saw blueprint')
-    expect(lines).toContain(`Plank: 1/${BUILDING_COSTS.benchSaw.plank}`)
-    expect(lines).toContain(`Block: 0/${BUILDING_COSTS.benchSaw.block}`)
+    expect(lines).toContain(`Log: 1/${BUILDING_COSTS.benchSaw.log}`)
+    expect(lines).toContain(`Stone: 0/${BUILDING_COSTS.benchSaw.stone}`)
   })
 
   it('shows an empty stockpile as Empty', () => {
