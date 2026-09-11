@@ -27,14 +27,14 @@ describe('blueprint delivery', () => {
     if (stockpile === undefined) {
       throw new Error('stockpile missing')
     }
-    const plankCost = BUILDING_COSTS.stockpile.plank ?? 0
-    // One plank more than the blueprint needs, so the routine attempts a delivery after it completes.
-    stockpile.storage = { plank: plankCost + 1 }
+    const logCost = BUILDING_COSTS.stockpile.log ?? 0
+    // One log more than the blueprint needs, so the routine attempts a delivery after it completes.
+    stockpile.storage = { log: logCost + 1 }
     const blueprintId = addEntity(state, createBlueprint('stockpile', { x: 5, y: 8 }))
 
     const program: Program = {
-      id: 'deliver-planks',
-      name: 'deliver planks',
+      id: 'deliver-logs',
+      name: 'deliver logs',
       version: 1,
       instructions: [
         {
@@ -44,7 +44,7 @@ describe('blueprint delivery', () => {
           params: { mode: 'forever' },
           children: [
             { id: 'move-to-stockpile', op: 'MOVE_TO', args: [{ mode: 'nearestOf', entityType: 'stockpile' }] },
-            { id: 'take', op: 'TAKE_FROM', args: [{ mode: 'nearestOf', entityType: 'stockpile' }], item: 'plank' },
+            { id: 'take', op: 'TAKE_FROM', args: [{ mode: 'nearestOf', entityType: 'stockpile' }], item: 'log' },
             { id: 'move-to-blueprint', op: 'MOVE_TO', args: [{ mode: 'nearestOf', entityType: 'blueprint' }] },
             { id: 'give', op: 'GIVE_TO', args: [{ mode: 'nearestOf', entityType: 'blueprint' }] },
           ],

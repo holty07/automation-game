@@ -155,7 +155,7 @@ describe('blueprints', () => {
     if (blueprint === undefined) {
       throw new Error('blueprint missing')
     }
-    blueprint.storage = { plank: (BUILDING_COSTS.stockpile.plank ?? 1) - 1 }
+    blueprint.storage = { log: (BUILDING_COSTS.stockpile.log ?? 1) - 1 }
 
     stepBlueprints(state)
 
@@ -169,7 +169,7 @@ describe('blueprints', () => {
     if (blueprint === undefined) {
       throw new Error('blueprint missing')
     }
-    blueprint.storage = { plank: BUILDING_COSTS.benchSaw.plank, block: (BUILDING_COSTS.benchSaw.block ?? 1) - 1 }
+    blueprint.storage = { log: BUILDING_COSTS.benchSaw.log, stone: (BUILDING_COSTS.benchSaw.stone ?? 1) - 1 }
 
     stepBlueprints(state)
 

@@ -47,10 +47,14 @@ export function recipesFor(type: EntityType): Partial<Record<ItemKind, Recipe>> 
 export const CONTAINER_CAPACITY = 50
 
 /** Materials a blueprint needs delivered before stepBlueprints completes it into the finished
- * building — buildings are no longer free to place, only free to plan. */
+ * building — buildings are no longer free to place, only free to plan. stockpile and benchSaw are
+ * costed in raw log/stone (choppable/mineable with no machine at all), not plank/block, since
+ * those are only ever produced BY a bench saw — costing the bench saw's own blueprint in them
+ * would make it impossible to ever build the first one. mill can safely cost plank/block: by the
+ * time a player wants a mill, a bench saw (and so a plank/block supply) already exists. */
 export const BUILDING_COSTS: Record<BuildableType, Partial<Record<ItemKind, number>>> = {
-  stockpile: { plank: 2 },
-  benchSaw: { plank: 4, block: 2 },
+  stockpile: { log: 2 },
+  benchSaw: { log: 2, stone: 2 },
   mill: { plank: 4, block: 1 },
 }
 

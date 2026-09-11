@@ -530,19 +530,19 @@ describe('executeAction', () => {
       if (blueprintId === undefined) {
         throw new Error('blueprint missing')
       }
-      const plankCost = BUILDING_COSTS.stockpile.plank ?? 0
+      const logCost = BUILDING_COSTS.stockpile.log ?? 0
 
-      // Deliver every plank but one -- still short, so it must not complete.
-      for (let i = 0; i < plankCost - 1; i += 1) {
-        player.held = 'plank'
+      // Deliver every log but one -- still short, so it must not complete.
+      for (let i = 0; i < logCost - 1; i += 1) {
+        player.held = 'log'
         player.busyUntilTick = state.tick // each GIVE_TO leaves the actor busy; clear it between calls
         expect(executeAction(state, playerId, { op: 'GIVE_TO', target: blueprintId }).ok).toBe(true)
       }
       stepBlueprints(state)
       expect(getEntity(state, blueprintId)?.type).toBe('blueprint')
 
-      // Deliver the last plank -- now it must complete.
-      player.held = 'plank'
+      // Deliver the last log -- now it must complete.
+      player.held = 'log'
       player.busyUntilTick = state.tick
       expect(executeAction(state, playerId, { op: 'GIVE_TO', target: blueprintId }).ok).toBe(true)
       stepBlueprints(state)
@@ -589,8 +589,8 @@ describe('executeAction', () => {
       if (blueprint === undefined || blueprint.storage === null) {
         throw new Error('blueprint missing storage')
       }
-      blueprint.storage.plank = BUILDING_COSTS.stockpile.plank
-      player.held = 'plank'
+      blueprint.storage.log = BUILDING_COSTS.stockpile.log
+      player.held = 'log'
       player.busyUntilTick = state.tick // BUILD left the actor busy
 
       const result = executeAction(state, playerId, { op: 'GIVE_TO', target: blueprintId })
