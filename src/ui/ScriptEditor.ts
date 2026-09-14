@@ -7,6 +7,7 @@ import { currentInstructionId } from '../sim/vm'
 import { createBotControls } from './BotControls'
 import type { InstructionRowCallbacks } from './InstructionRow'
 import { createInstructionRow } from './InstructionRow'
+import type { Toolbar } from './Toolbar'
 import {
   appendInstruction,
   duplicateInstruction,
@@ -48,7 +49,7 @@ export interface ScriptEditor {
   destroy(): void
 }
 
-export function createScriptEditor(container: HTMLElement, state: SimState): ScriptEditor {
+export function createScriptEditor(container: HTMLElement, state: SimState, toolbar: Toolbar): ScriptEditor {
   let openBotId: EntityId | null = null
   let duplicateCounter = 0
   let addedCounter = 0
@@ -87,10 +88,42 @@ export function createScriptEditor(container: HTMLElement, state: SimState): Scr
     })
   })
 
+  const recordButton = document.createElement('button')
+  /** Recording is a single, shared session (see Toolbar.ts) — this button drives it only while
+   * either nothing else is recording, or this bot is already the one being recorded onto. It's
+   * disabled (not hidden) whenever a *different* recording is running (another bot, or a fresh
+   * deploy via the toolbar's own Record button), so it never looks clickable in a way that would
+   * silently steal or clobber that other recording. */
+  function refreshRecordButton(): void {
+    if (!toolbar.isRecording()) {
+      recordButton.textContent = 'Record'
+      recordButton.disabled = false
+      return
+    }
+    if (toolbar.recordingTargetBotId() === openBotId) {
+      recordButton.textContent = 'Stop'
+      recordButton.disabled = false
+    } else {
+      recordButton.textContent = 'Recording elsewhere…'
+      recordButton.disabled = true
+    }
+  }
+  recordButton.addEventListener('click', () => {
+    if (openBotId === null) {
+      return
+    }
+    if (toolbar.isRecording()) {
+      toolbar.stopRecording()
+    } else {
+      toolbar.startRecordingForBot(openBotId)
+    }
+    refreshRecordButton()
+  })
+
   const closeButton = document.createElement('button')
   closeButton.textContent = 'Close'
   closeButton.addEventListener('click', () => close())
-  header.append(title, statusLine, failurePolicySelect, closeButton)
+  header.append(title, statusLine, recordButton, failurePolicySelect, closeButton)
 
   const botControls = createBotControls(panel, {
     onUpgradeTier() {
@@ -268,6 +301,8 @@ export function createScriptEditor(container: HTMLElement, state: SimState): Scr
     for (const row of flattenForDisplay(program.instructions)) {
       list.append(createInstructionRow(row, row.instruction.id === activeId, callbacks))
     }
+
+    refreshRecordButton()
   }
 
   return {
@@ -294,6 +329,7 @@ export function createScriptEditor(container: HTMLElement, state: SimState): Scr
       }
       statusLine.textContent =
         runtime.blockedReason === undefined ? runtime.status : `${runtime.status} — ${runtime.blockedReason}`
+      refreshRecordButton()
     },
     destroy(): void {
       botControls.destroy()

@@ -5,6 +5,7 @@ export type Opcode =
   | 'PICK_UP'
   | 'DROP'
   | 'USE'
+  | 'PLANT'
   | 'TAKE_FROM'
   | 'GIVE_TO'
   | 'REPEAT'
@@ -84,6 +85,7 @@ const OPCODE_MIN_TIER: Record<Opcode, BotTier> = {
   PICK_UP: 'mk1',
   DROP: 'mk1',
   USE: 'mk1',
+  PLANT: 'mk1',
   REPEAT: 'mk1',
   TAKE_FROM: 'mk2',
   GIVE_TO: 'mk2',
@@ -124,7 +126,7 @@ function countInstructions(instructions: Instruction[]): number {
 }
 
 /** True if the whole program is exactly one top-level REPEAT forever wrapping everything else. */
-function isWrappedInOuterRepeatForever(instructions: Instruction[]): boolean {
+export function isWrappedInOuterRepeatForever(instructions: Instruction[]): boolean {
   if (instructions.length !== 1) {
     return false
   }
@@ -223,6 +225,35 @@ export function validate(program: Program, tier: BotTier): ValidationResult {
   }
 
   return { ok: errors.length === 0, errors }
+}
+
+/**
+ * Splices a freshly recorded (and generalised) instruction list onto the end of an existing
+ * program, so a bot that already does a job can be taught more without losing what it already
+ * does — recording again is additive, never a replacement. `recorded` is generalise's own output,
+ * always wrapped in its own outer REPEAT forever; that wrapper is only scaffolding for this one
+ * recording session, so it's unwrapped and its body spliced into `existing`'s own outer loop
+ * (reusing that same loop instruction) rather than nesting a second REPEAT forever inside the
+ * first, which would trap execution in the new steps and starve the old ones. `existing` empty (a
+ * freshly deployed bot with nothing yet) or not itself wrapped that way (a hand-built program)
+ * falls back to simple concatenation instead.
+ */
+export function appendInstructions(existing: Instruction[], recorded: Instruction[]): Instruction[] {
+  const recordedBody = isWrappedInOuterRepeatForever(recorded) ? (recorded[0]?.children ?? []) : recorded
+
+  if (existing.length === 0) {
+    return recorded
+  }
+
+  if (!isWrappedInOuterRepeatForever(existing)) {
+    return [...existing, ...recordedBody]
+  }
+
+  const outer = existing[0]
+  if (outer === undefined) {
+    return recorded
+  }
+  return [{ ...outer, children: [...(outer.children ?? []), ...recordedBody] }]
 }
 
 /** Rejects any program version this build doesn't understand, rather than blindly trusting the JSON. */

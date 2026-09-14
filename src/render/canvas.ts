@@ -1,9 +1,10 @@
 import type { Entity, EntityId, SimState } from '../sim/types'
 import { getTile } from '../sim/world'
 import { MOVE_TICKS_PER_TILE } from '../sim/movement'
+import { lockedStockpileItem } from '../sim/machines'
 import type { Camera } from './camera'
 import { lerp, tileToScreen, visibleTileBounds } from './camera'
-import { drawEntity, drawTile } from './sprites'
+import { drawEntity, drawStoredItemBadge, drawTile } from './sprites'
 
 /**
  * An entity's tile position only advances once every MOVE_TICKS_PER_TILE ticks, not every
@@ -54,5 +55,12 @@ export function render(
     const { x, y } = interpolatedPos(entity, alpha)
     const screen = tileToScreen(camera, followX, followY, x, y)
     drawEntity(ctx, entity.type, screen.x, screen.y, camera.tileSize)
+
+    if (entity.type === 'stockpile' && entity.storage !== null) {
+      const stored = lockedStockpileItem(entity.storage)
+      if (stored !== null) {
+        drawStoredItemBadge(ctx, stored, screen.x, screen.y, camera.tileSize)
+      }
+    }
   }
 }

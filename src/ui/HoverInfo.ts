@@ -22,6 +22,8 @@ const HOVER_PRIORITY: EntityType[] = [
   'mill',
   'tree',
   'rock',
+  'stoneDeposit',
+  'youngTree',
   'wheat',
   'seedling',
   'tilledSoil',
@@ -35,6 +37,8 @@ const HOVER_PRIORITY: EntityType[] = [
   'gear',
   'circuit',
   'core',
+  'pickaxe',
+  'sapling',
   'player',
 ]
 
@@ -102,8 +106,11 @@ export function describeEntity(state: SimState, entity: Entity): string[] {
   if (recipesFor(entity.type) !== null || entity.type === 'stockpile') {
     return [title, ...describeStorage(state, entity)]
   }
-  if (entity.type === 'seedling' && entity.craftingUntilTick !== null) {
+  if ((entity.type === 'seedling' || entity.type === 'youngTree') && entity.craftingUntilTick !== null) {
     return [title, `Growing (${Math.max(0, entity.craftingUntilTick - state.tick)} ticks left)`]
+  }
+  if (entity.type === 'stoneDeposit') {
+    return [title, 'Needs a pickaxe to mine']
   }
   return [title]
 }

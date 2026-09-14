@@ -1,12 +1,36 @@
 import { describe, expect, it } from 'vitest'
 import { addBenchSaw, addEntity, addMill, addStockpile, createWorld, getEntity } from '../../src/sim/world'
-import { BENCH_SAW_RECIPES, BUILDING_COSTS, MILL_RECIPES, createBlueprint, recipesFor, stepBlueprints, stepMachines } from '../../src/sim/machines'
+import {
+  BENCH_SAW_RECIPES,
+  BUILDING_COSTS,
+  MILL_RECIPES,
+  createBlueprint,
+  lockedStockpileItem,
+  recipesFor,
+  stepBlueprints,
+  stepMachines,
+} from '../../src/sim/machines'
 
 const PLANK_RECIPE = BENCH_SAW_RECIPES.log
 const FLOUR_RECIPE = MILL_RECIPES.grain
 if (PLANK_RECIPE === undefined || FLOUR_RECIPE === undefined) {
   throw new Error('expected recipes missing')
 }
+
+describe('lockedStockpileItem', () => {
+  it('is null for an empty store', () => {
+    expect(lockedStockpileItem({})).toBeNull()
+  })
+
+  it('is null once the one kind it held has been fully withdrawn', () => {
+    expect(lockedStockpileItem({ log: 0 })).toBeNull()
+  })
+
+  it('is whichever kind currently has a positive count', () => {
+    expect(lockedStockpileItem({ log: 3 })).toBe('log')
+    expect(lockedStockpileItem({ plank: 1 })).toBe('plank')
+  })
+})
 
 describe('machines', () => {
   it('creates a stockpile with an empty store', () => {

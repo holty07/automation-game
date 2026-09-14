@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { countScriptInstructions, instructionCap, isOpcodeAvailable, migrate, validate } from '../../src/sim/program'
+import { appendInstructions, countScriptInstructions, instructionCap, isOpcodeAvailable, migrate, validate } from '../../src/sim/program'
 import type { Instruction, Program } from '../../src/sim/program'
 
 function moveInstruction(id: string): Instruction {
   return { id, op: 'MOVE_TO', args: [{ mode: 'nearestOf', entityType: 'tree' }] }
+}
+
+function repeatForever(id: string, children: Instruction[]): Instruction {
+  return { id, op: 'REPEAT', args: [], params: { mode: 'forever' }, children }
 }
 
 describe('validate', () => {
@@ -366,6 +370,39 @@ describe('countScriptInstructions', () => {
     }
 
     expect(countScriptInstructions(program)).toBe(3)
+  })
+})
+
+describe('appendInstructions', () => {
+  it('uses the recorded instructions as-is for a bot with no program yet', () => {
+    const recorded = [repeatForever('outer', [moveInstruction('1')])]
+
+    expect(appendInstructions([], recorded)).toEqual(recorded)
+  })
+
+  it('splices the recorded steps into the existing outer REPEAT forever, reusing that same loop', () => {
+    const existing = [repeatForever('outer', [moveInstruction('1'), moveInstruction('2')])]
+    const recorded = [repeatForever('new-outer', [moveInstruction('3')])]
+
+    const result = appendInstructions(existing, recorded)
+
+    // Same outer loop id — not a second, nested REPEAT forever, which would trap the bot in only
+    // the newly recorded steps and starve the ones it already had.
+    expect(result).toEqual([repeatForever('outer', [moveInstruction('1'), moveInstruction('2'), moveInstruction('3')])])
+  })
+
+  it('concatenates onto a non-empty, non-wrapped program instead of synthesising a loop', () => {
+    const existing = [moveInstruction('1')]
+    const recorded = [repeatForever('outer', [moveInstruction('2')])]
+
+    expect(appendInstructions(existing, recorded)).toEqual([moveInstruction('1'), moveInstruction('2')])
+  })
+
+  it('appends recorded instructions that were not themselves wrapped, unchanged', () => {
+    const existing = [repeatForever('outer', [moveInstruction('1')])]
+    const recorded = [moveInstruction('2')]
+
+    expect(appendInstructions(existing, recorded)).toEqual([repeatForever('outer', [moveInstruction('1'), moveInstruction('2')])])
   })
 })
 

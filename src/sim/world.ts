@@ -1,15 +1,15 @@
 import type { Entity, EntityId, ItemKind, SimState, TileRef, TileType } from './types'
 import { createRng } from './rng'
 import { MOVE_TICKS_PER_TILE } from './movement'
-import { createGroundItem, createRock, createTree, staticEntity } from './entities'
+import { createGroundItem, createRock, createStoneDeposit, createTree, staticEntity } from './entities'
 import { createBenchSaw, createMill, createStockpile } from './machines'
 
 const DEFAULT_TILE: TileType = 'grass'
 
 /** Entity types that occupy their tile exclusively — nothing else can walk onto or path through it.
- * Farming fixtures (soil, tilled soil, seedlings, wheat) are deliberately excluded — a field should
- * be walkable, not a maze. */
-const BLOCKING_TYPES = new Set(['tree', 'rock', 'stockpile', 'benchSaw', 'mill', 'blueprint'])
+ * Farming fixtures (soil, tilled soil, seedlings, wheat) and a growing young tree are deliberately
+ * excluded — a field should be walkable, not a maze. */
+const BLOCKING_TYPES = new Set(['tree', 'rock', 'stoneDeposit', 'stockpile', 'benchSaw', 'mill', 'blueprint'])
 
 export function createWorld(width: number, height: number, seed: number): SimState {
   return {
@@ -90,6 +90,10 @@ export function addTree(state: SimState, x: number, y: number): EntityId {
 
 export function addRock(state: SimState, x: number, y: number): EntityId {
   return addEntity(state, createRock({ x, y }))
+}
+
+export function addStoneDeposit(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, createStoneDeposit({ x, y }))
 }
 
 export function addGroundItem(state: SimState, kind: ItemKind, x: number, y: number): EntityId {

@@ -2,7 +2,8 @@ import { assignRoutine, copyProgram, editProgram, saveRoutine, setBotTier, setFa
 import { hasStockedCost, BOT_TIER_COSTS, deductStockedCost } from './botCosts'
 import { createBotRuntime, type FailurePolicy } from './botRuntime'
 import { createGroundItem, getActionCost, isItemKind, staticEntity } from './entities'
-import { BUILDING_COSTS, CONTAINER_CAPACITY, createBlueprint, recipesFor, totalStored } from './machines'
+import { BUILDING_COSTS, CONTAINER_CAPACITY, createBlueprint, lockedStockpileItem, recipesFor, totalStored } from './machines'
+import { plant } from './planting'
 import type { BotTier, Instruction, Program } from './program'
 import type { BuildableType, Entity, EntityId, ItemKind, SimState, TileRef } from './types'
 import { use } from './useVerb'
@@ -16,6 +17,7 @@ export type ActionRequest =
   | { op: 'PICK_UP'; target: EntityId }
   | { op: 'DROP'; target: TileRef }
   | { op: 'USE'; target: EntityId }
+  | { op: 'PLANT'; target: TileRef }
   | { op: 'GIVE_TO'; target: EntityId }
   | { op: 'TAKE_FROM'; target: EntityId; item: ItemKind }
   | { op: 'WAIT'; ticks: number }
@@ -154,6 +156,13 @@ function giveTo(state: SimState, actor: Entity, targetId: EntityId): ActionResul
     return { ok: true }
   }
 
+  if (target.type === 'stockpile') {
+    const locked = lockedStockpileItem(target.storage)
+    if (locked !== null && locked !== heldKind) {
+      return fail(`this stockpile only holds ${locked}`)
+    }
+  }
+
   const cost = getActionCost('GIVE_TO', heldKind)
   target.storage[heldKind] = (target.storage[heldKind] ?? 0) + 1
   actor.held = null
@@ -269,6 +278,8 @@ export function executeAction(state: SimState, actorId: EntityId, request: Actio
       return drop(state, actor, request.target)
     case 'USE':
       return use(state, actor, request.target)
+    case 'PLANT':
+      return plant(state, actor, request.target)
     case 'GIVE_TO':
       return giveTo(state, actor, request.target)
     case 'TAKE_FROM':

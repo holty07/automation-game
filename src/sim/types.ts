@@ -6,13 +6,15 @@ import type { BotRuntime } from './vm'
 export type TileType = 'grass' | 'dirt' | 'stone' | 'water'
 
 /** An item that can be carried in hand, dropped, and picked back up. */
-export type ItemKind = 'log' | 'stone' | 'plank' | 'block' | 'grain' | 'flour' | 'gear' | 'circuit' | 'core'
+export type ItemKind = 'log' | 'stone' | 'plank' | 'block' | 'grain' | 'flour' | 'gear' | 'circuit' | 'core' | 'pickaxe' | 'sapling'
 
 export type EntityType =
   | 'player'
   | 'bot'
   | 'tree'
   | 'rock'
+  | 'stoneDeposit'
+  | 'youngTree'
   | 'stockpile'
   | 'benchSaw'
   | 'mill'

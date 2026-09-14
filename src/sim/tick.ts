@@ -2,6 +2,7 @@ import type { SimState } from './types'
 import { stepMovement } from './movement'
 import { stepMachines, stepBlueprints } from './machines'
 import { stepCrops } from './farming'
+import { stepTreeGrowth } from './planting'
 import { stepBots } from './vm'
 
 const TICK_RATE_HZ = 20
@@ -13,6 +14,7 @@ export function tick(state: SimState): void {
   stepMachines(state)
   stepBlueprints(state)
   stepCrops(state)
+  stepTreeGrowth(state)
   stepBots(state)
 }
 

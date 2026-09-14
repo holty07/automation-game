@@ -22,6 +22,16 @@ function hasItem(state: SimState, kind: ItemKind): boolean {
   return state.entities.some((entity) => entity.type === kind || entity.held === kind || (entity.storage?.[kind] ?? 0) > 0)
 }
 
+/** True once any bot anywhere has been given an actual job — the player starts with one free,
+ * empty-programmed bot (see main.ts), so `hasEntity(state, 'bot')` alone would already be true
+ * from tick zero and this step would never meaningfully gate on the player doing anything. */
+function hasProgrammedBot(state: SimState): boolean {
+  return Object.values(state.botRuntimes).some((runtime) => {
+    const program = state.programs[runtime.programId]
+    return program !== undefined && program.instructions.length > 0
+  })
+}
+
 export const TUTORIAL_HINTS: readonly Hint[] = [
   {
     text: 'Chop a tree — click one nearby to gather a log.',
@@ -48,8 +58,8 @@ export const TUTORIAL_HINTS: readonly Hint[] = [
     isComplete: (state) => hasItem(state, 'flour'),
   },
   {
-    text: 'Stock 4 planks, 2 blocks and 1 flour in a stockpile, then Record yourself chopping a tree, Stop, and Assign it to build your first bot.',
-    isComplete: (state) => hasEntity(state, 'bot'),
+    text: 'You already have a free bot standing by — click it to start recording, chop a tree, then click it again to give it that job.',
+    isComplete: (state) => hasProgrammedBot(state),
   },
   {
     text: 'Click your bot in the list to open its script and see what it is doing.',
