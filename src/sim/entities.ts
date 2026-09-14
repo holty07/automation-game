@@ -6,7 +6,19 @@ export const RESOURCE_YIELD: Record<'tree' | 'rock', ItemKind> = {
   rock: 'stone',
 }
 
-export const ITEM_KINDS: ItemKind[] = ['log', 'stone', 'plank', 'block', 'grain', 'flour', 'gear', 'circuit', 'core']
+export const ITEM_KINDS: ItemKind[] = [
+  'log',
+  'stone',
+  'plank',
+  'block',
+  'grain',
+  'flour',
+  'gear',
+  'circuit',
+  'core',
+  'pickaxe',
+  'sapling',
+]
 
 export function isItemKind(type: EntityType): type is ItemKind {
   return (ITEM_KINDS as EntityType[]).includes(type)
@@ -16,11 +28,12 @@ export function isItemKind(type: EntityType): type is ItemKind {
  * Opcodes costed here. MOVE_TO is deliberately absent — its duration comes from the
  * continuous per-tile movement system (movement.ts's MOVE_TICKS_PER_TILE), not this table.
  */
-export type ActionOp = 'PICK_UP' | 'DROP' | 'USE' | 'GIVE_TO' | 'TAKE_FROM' | 'BUILD'
+export type ActionOp = 'PICK_UP' | 'DROP' | 'USE' | 'GIVE_TO' | 'TAKE_FROM' | 'BUILD' | 'PLANT'
 
 const ACTION_COSTS: Record<string, number> = {
   'USE:tree': 40,
   'USE:rock': 60,
+  'USE:stoneDeposit': 60,
   'USE:soil': 30,
   'USE:tilledSoil': 20,
   'USE:wheat': 30,
@@ -33,6 +46,8 @@ const ACTION_COSTS: Record<string, number> = {
   'PICK_UP:gear': 8,
   'PICK_UP:circuit': 8,
   'PICK_UP:core': 8,
+  'PICK_UP:pickaxe': 8,
+  'PICK_UP:sapling': 8,
   'DROP:log': 4,
   'DROP:stone': 4,
   'DROP:plank': 4,
@@ -42,6 +57,8 @@ const ACTION_COSTS: Record<string, number> = {
   'DROP:gear': 4,
   'DROP:circuit': 4,
   'DROP:core': 4,
+  'DROP:pickaxe': 4,
+  'DROP:sapling': 4,
   'GIVE_TO:log': 4,
   'GIVE_TO:stone': 4,
   'GIVE_TO:plank': 4,
@@ -51,6 +68,8 @@ const ACTION_COSTS: Record<string, number> = {
   'GIVE_TO:gear': 4,
   'GIVE_TO:circuit': 4,
   'GIVE_TO:core': 4,
+  'GIVE_TO:pickaxe': 4,
+  'GIVE_TO:sapling': 4,
   'TAKE_FROM:log': 8,
   'TAKE_FROM:stone': 8,
   'TAKE_FROM:plank': 8,
@@ -60,9 +79,12 @@ const ACTION_COSTS: Record<string, number> = {
   'TAKE_FROM:gear': 8,
   'TAKE_FROM:circuit': 8,
   'TAKE_FROM:core': 8,
+  'TAKE_FROM:pickaxe': 8,
+  'TAKE_FROM:sapling': 8,
   'BUILD:stockpile': 20,
   'BUILD:benchSaw': 20,
   'BUILD:mill': 20,
+  'PLANT:sapling': 30,
 }
 
 /** Looks up a tick duration from the action-cost table. Throws if (op, targetType) is undefined. */
@@ -100,6 +122,12 @@ export function createTree(pos: TileRef): EntityData {
 
 export function createRock(pos: TileRef): EntityData {
   return staticEntity('rock', pos)
+}
+
+/** A renewable stone outcrop: unlike a rock, mining it never removes it — see useVerb.ts's
+ * useStoneDeposit. Requires a pickaxe held to mine at all. */
+export function createStoneDeposit(pos: TileRef): EntityData {
+  return staticEntity('stoneDeposit', pos)
 }
 
 export function createGroundItem(kind: ItemKind, pos: TileRef): EntityData {

@@ -27,7 +27,15 @@ function absoluteTile(instruction: Instruction): TileRef | null {
  * resources" the design calls out for nearestOf binding. Buildings/machines (GIVE_TO/TAKE_FROM
  * targets) are deliberately excluded — those stay absolute. */
 function isRenewable(type: EntityType): boolean {
-  return type === 'tree' || type === 'rock' || type === 'soil' || type === 'tilledSoil' || type === 'wheat' || isItemKind(type)
+  return (
+    type === 'tree' ||
+    type === 'rock' ||
+    type === 'stoneDeposit' ||
+    type === 'soil' ||
+    type === 'tilledSoil' ||
+    type === 'wheat' ||
+    isItemKind(type)
+  )
 }
 
 /** Rule: collapse a run of consecutive MOVE_TO instructions to the same absolute tile into one. */

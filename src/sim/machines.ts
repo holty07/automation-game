@@ -18,13 +18,15 @@ function recipeTable(recipes: Recipe[]): Partial<Record<ItemKind, Recipe>> {
 
 /** The bench saw refines raw resources into successively finer materials: wood into planks (the
  * bot body), stone into blocks and onward into the gears/circuits/cores the Mk2-4 upgrade path
- * needs. Each recipe is keyed by its input, so giving the bench saw an item looks up the right one. */
+ * needs — plus a plank into a pickaxe, the tool a stone deposit needs to be mined at all. Each
+ * recipe is keyed by its input, so giving the bench saw an item looks up the right one. */
 export const BENCH_SAW_RECIPES = recipeTable([
   { input: 'log', output: 'plank', ticks: 80 },
   { input: 'stone', output: 'block', ticks: 80 },
   { input: 'block', output: 'gear', ticks: 100 },
   { input: 'gear', output: 'circuit', ticks: 120 },
   { input: 'circuit', output: 'core', ticks: 150 },
+  { input: 'plank', output: 'pickaxe', ticks: 60 },
 ])
 
 /** The mill turns harvested grain into the flour a Mk1 bot needs. */
@@ -60,6 +62,14 @@ export const BUILDING_COSTS: Record<BuildableType, Partial<Record<ItemKind, numb
 
 export function totalStored(storage: Partial<Record<ItemKind, number>>): number {
   return Object.values(storage).reduce<number>((sum, count) => sum + (count ?? 0), 0)
+}
+
+/** The one item kind a stockpile currently holds, or null once it's empty — a stockpile locks to
+ * whatever kind is first delivered (see actions.ts's giveTo) and stays locked until emptied, so
+ * withdrawing from it (a click, or a bot's TAKE_FROM) is never a guess between several kinds. */
+export function lockedStockpileItem(storage: Partial<Record<ItemKind, number>>): ItemKind | null {
+  const entry = (Object.entries(storage) as [ItemKind, number][]).find(([, count]) => count > 0)
+  return entry === undefined ? null : entry[0]
 }
 
 export function createStockpile(pos: TileRef): EntityData {

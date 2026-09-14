@@ -76,7 +76,7 @@ function buildRequest(
       return tile === null ? { reason: 'no path to target' } : { request: { op: 'MOVE_TO', target: tile } }
     }
     case 'USE': {
-      const id = resolveEntityTarget(state, resolved, (entity) => entity.type === 'tree' || entity.type === 'rock')
+      const id = resolveEntityTarget(state, resolved, (entity) => entity.type === 'tree' || entity.type === 'rock' || entity.type === 'stoneDeposit')
       return id === null ? { reason: 'USE needs a resource target' } : { request: { op: 'USE', target: id } }
     }
     case 'PICK_UP': {
@@ -86,6 +86,10 @@ function buildRequest(
     case 'DROP': {
       const tile = resolved.kind === 'tile' ? resolved.tile : resolved.kind === 'entity' ? resolved.pos : null
       return tile === null ? { reason: 'DROP needs a tile target' } : { request: { op: 'DROP', target: tile } }
+    }
+    case 'PLANT': {
+      const tile = resolved.kind === 'tile' ? resolved.tile : resolved.kind === 'entity' ? resolved.pos : null
+      return tile === null ? { reason: 'PLANT needs a tile target' } : { request: { op: 'PLANT', target: tile } }
     }
     case 'GIVE_TO': {
       const id = resolveEntityTarget(state, resolved, (entity) => entity.storage !== null)

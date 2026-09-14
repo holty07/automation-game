@@ -46,6 +46,7 @@ export function createControls(
   playerId: EntityId,
   toolbar: Toolbar,
   recorder: Recorder,
+  openBot: (botId: EntityId) => void,
 ): Controls {
   const pressed = new Set<string>()
   /** An action queued to fire once the player finishes walking to it (a click on a distant target). */
@@ -109,6 +110,14 @@ export function createControls(
       return
     }
 
+    // Clicking a bot always opens its script, the same as clicking it in the bot list — recording
+    // onto it goes through the Record button in that panel now, not a click on the world itself.
+    const bot = entitiesAt(state, tile.x, tile.y).find((entity) => entity.type === 'bot')
+    if (bot !== undefined) {
+      openBot(bot.id)
+      return
+    }
+
     const container = entitiesAt(state, tile.x, tile.y).find(
       (entity) => entity.type === 'stockpile' || entity.type === 'benchSaw' || entity.type === 'mill' || entity.type === 'blueprint',
     )
@@ -133,8 +142,24 @@ export function createControls(
       return
     }
 
+    // Checked before resources: a persistent renewable resource (a stone deposit, tilled soil just
+    // left behind by a harvest) can share its tile with the item it just produced, and a resource
+    // is always still there to re-match on the next click — so if a loose item sits here and hands
+    // are free, grabbing it takes priority, or clicking that tile could never pick anything up.
+    const item = entitiesAt(state, tile.x, tile.y).find((entity) => isItemKind(entity.type))
+    if (item !== undefined && player.held === null) {
+      approach(tile, { op: 'PICK_UP', target: item.id })
+      return
+    }
+
     const resource = entitiesAt(state, tile.x, tile.y).find(
-      (entity) => entity.type === 'tree' || entity.type === 'rock' || entity.type === 'soil' || entity.type === 'tilledSoil' || entity.type === 'wheat',
+      (entity) =>
+        entity.type === 'tree' ||
+        entity.type === 'rock' ||
+        entity.type === 'stoneDeposit' ||
+        entity.type === 'soil' ||
+        entity.type === 'tilledSoil' ||
+        entity.type === 'wheat',
     )
     if (resource !== undefined) {
       const path = findPathAdjacentTo(state, player.pos, resource.pos)
@@ -149,9 +174,16 @@ export function createControls(
       return
     }
 
-    const item = entitiesAt(state, tile.x, tile.y).find((entity) => isItemKind(entity.type))
-    if (item !== undefined && player.held === null) {
-      approach(tile, { op: 'PICK_UP', target: item.id })
+    if (player.held === 'sapling' && entitiesAt(state, tile.x, tile.y).length === 0) {
+      const path = findPathAdjacentTo(state, player.pos, tile)
+      if (path === null) {
+        return
+      }
+      const destination = path.length === 0 ? player.pos : path[path.length - 1]
+      if (destination === undefined) {
+        return
+      }
+      approach(destination, { op: 'PLANT', target: tile })
       return
     }
 

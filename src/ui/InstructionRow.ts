@@ -7,6 +7,7 @@ const OPCODE_LABELS: Record<string, string> = {
   PICK_UP: 'Pick up',
   DROP: 'Drop',
   USE: 'Use',
+  PLANT: 'Plant',
   GIVE_TO: 'Give to',
   TAKE_FROM: 'Take from',
   REPEAT: 'Repeat',
@@ -20,6 +21,8 @@ const OPCODE_LABELS: Record<string, string> = {
 const TARGETABLE_ENTITY_TYPES: EntityType[] = [
   'tree',
   'rock',
+  'stoneDeposit',
+  'youngTree',
   'soil',
   'tilledSoil',
   'wheat',
@@ -38,7 +41,7 @@ const TARGETABLE_ENTITY_TYPES: EntityType[] = [
   'core',
 ]
 
-const ITEM_OPTIONS: ItemKind[] = ['log', 'stone', 'plank', 'block', 'grain', 'flour', 'gear', 'circuit', 'core']
+const ITEM_OPTIONS: ItemKind[] = ['log', 'stone', 'plank', 'block', 'grain', 'flour', 'gear', 'circuit', 'core', 'pickaxe', 'sapling']
 
 const BINDING_MODE_LABELS: Record<TargetRef['mode'], string> = {
   absolute: 'Exact tile',

@@ -85,7 +85,7 @@ describe('generalise', () => {
     ])
   })
 
-  it.each(['soil', 'tilledSoil', 'wheat'] as const)(
+  it.each(['soil', 'tilledSoil', 'wheat', 'stoneDeposit'] as const)(
     'chains a MOVE_TO/USE farming step (%s) through nearestOf, the same as tree/rock',
     (entityType) => {
       const moveToTarget = move('move', 3, 0)
@@ -123,6 +123,27 @@ describe('generalise', () => {
     const { program } = generalise(raw, {}, makeIdFrom('gen'))
 
     expect(unwrap(program)[0]?.args[0]).toEqual({ mode: 'absolute', tile: { x: 3, y: 3 } })
+  })
+
+  it('leaves a PLANT absolute and does not chain a following MOVE_TO to it', () => {
+    // Mining a renewable stone deposit produces a new stone worth chaining to (chainActive stays
+    // true after USE) — but PLANT is not USE/PICK_UP, so it must reset the chain like DROP/GIVE_TO
+    // do, rather than incorrectly being rebound to the deposit's lastResult.
+    const moveToDeposit = move('move-deposit', 3, 0)
+    const use: Instruction = { id: 'use', op: 'USE', args: [absolute(3, 0)] }
+    const plant: Instruction = { id: 'plant', op: 'PLANT', args: [absolute(5, 0)] }
+    const moveAway = move('move-away', 6, 0)
+    const raw = rawProgram([moveToDeposit, use, plant, moveAway])
+    const targetTypes: Record<string, EntityType> = { use: 'stoneDeposit' }
+
+    const { program } = generalise(raw, targetTypes, makeIdFrom('gen'))
+
+    expect(unwrap(program).map((instruction) => instruction.args[0])).toEqual([
+      { mode: 'nearestOf', entityType: 'stoneDeposit' },
+      { mode: 'lastResult' },
+      { mode: 'absolute', tile: { x: 5, y: 0 } },
+      { mode: 'absolute', tile: { x: 6, y: 0 } },
+    ])
   })
 
   it('binds a DROP immediately following a PICK_UP to held', () => {

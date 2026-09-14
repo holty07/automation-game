@@ -32,6 +32,7 @@ function targetTileFor(state: SimState, request: ActionRequest): TileRef | null 
   switch (request.op) {
     case 'MOVE_TO':
     case 'DROP':
+    case 'PLANT':
       return request.target
     case 'PICK_UP':
     case 'USE':
@@ -80,6 +81,8 @@ function toInstruction(id: string, request: ActionRequest, tile: TileRef): Instr
       return { id, op: 'DROP', args: [target] }
     case 'USE':
       return { id, op: 'USE', args: [target] }
+    case 'PLANT':
+      return { id, op: 'PLANT', args: [target] }
     case 'GIVE_TO':
       return { id, op: 'GIVE_TO', args: [target] }
     case 'TAKE_FROM':

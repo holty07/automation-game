@@ -119,6 +119,28 @@ describe('recorder', () => {
     }).not.toThrow()
   })
 
+  it('records a PLANT action bound absolute, with no associated entity type', () => {
+    const state = createWorld(10, 10, 1)
+    const playerId = addPlayer(state, 0, 0)
+    const player = getEntity(state, playerId)
+    if (player === undefined) {
+      throw new Error('player missing')
+    }
+    player.held = 'sapling'
+    const recorder = createRecorder()
+    recorder.start()
+
+    const result = recorder.perform(state, playerId, { op: 'PLANT', target: { x: 1, y: 0 } })
+    const instructions = recorder.stop()
+
+    expect(result.ok).toBe(true)
+    expect(instructions).toHaveLength(1)
+    expect(instructions[0]).toEqual({ id: 'rec-1', op: 'PLANT', args: [{ mode: 'absolute', tile: { x: 1, y: 0 } }] })
+    // PLANT has no associated entity type — nothing was there to look up, unlike USE/PICK_UP.
+    const planted = instructions[0]
+    expect(planted === undefined ? undefined : recorder.lastTargetTypes()[planted.id]).toBeUndefined()
+  })
+
   it('never records a BUILD action, since bots have no BUILD opcode', () => {
     const state = createWorld(10, 10, 1)
     const playerId = addPlayer(state, 0, 0)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addBot, addPlayer, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
+import { addBot, addPlayer, addStockpile, addStoneDeposit, addTree, createWorld, getEntity } from '../../src/sim/world'
 import { tick } from '../../src/sim/tick'
 import { createBotRuntime, stepBots } from '../../src/sim/vm'
 import type { Instruction, Program } from '../../src/sim/program'
@@ -468,6 +468,58 @@ describe('bot VM', () => {
 
     expect(getEntity(state, botId)?.pos).toEqual({ x: 1, y: 0 })
     expect(state.botRuntimes[botId]?.blockedReason).not.toBe('routine call stack too deep')
+  })
+
+  it('mines a stone deposit when holding a pickaxe, and it stays put for the next pass', () => {
+    const state = createWorld(10, 10, 1)
+    const botId = addBot(state, 5, 5)
+    const bot = getEntity(state, botId)
+    if (bot === undefined) {
+      throw new Error('bot missing')
+    }
+    bot.held = 'pickaxe'
+    addStoneDeposit(state, 6, 5)
+    const program: Program = {
+      id: 'mine',
+      name: 'mine stone',
+      version: 1,
+      instructions: [
+        { id: '1', op: 'MOVE_TO', args: [{ mode: 'nearestOf', entityType: 'stoneDeposit' }] },
+        { id: '2', op: 'USE', args: [{ mode: 'lastResult' }] },
+      ],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+    runTicks(state, 100)
+
+    expect(state.entities.some((entity) => entity.type === 'stoneDeposit')).toBe(true)
+    expect(state.entities.some((entity) => entity.type === 'stone')).toBe(true)
+    expect(state.botRuntimes[botId]?.status).toBe('halted')
+    expect(state.botRuntimes[botId]?.blockedReason).toBe('program complete')
+  })
+
+  it('plants a held sapling at an absolute tile via PLANT', () => {
+    const state = createWorld(10, 10, 1)
+    const botId = addBot(state, 5, 5)
+    const bot = getEntity(state, botId)
+    if (bot === undefined) {
+      throw new Error('bot missing')
+    }
+    bot.held = 'sapling'
+    const program: Program = {
+      id: 'plant',
+      name: 'plant a sapling',
+      version: 1,
+      instructions: [{ id: '1', op: 'PLANT', args: [{ mode: 'absolute', tile: { x: 6, y: 5 } }] }],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+    runTicks(state, 40)
+
+    expect(state.entities.some((entity) => entity.type === 'youngTree')).toBe(true)
+    expect(getEntity(state, botId)?.held).toBeNull()
   })
 
   it('fails cleanly (never throws) when TAKE_FROM targets an empty container', () => {

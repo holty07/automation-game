@@ -24,7 +24,9 @@ function requireEntity(state: SimState, id: EntityId) {
  * The M9 acceptance criterion, end to end at the sim layer (no UI, no player input): chop a tree,
  * mine a rock, run the full till -> sow -> grow -> harvest -> mill farming chain, craft the Mk1
  * bot's materials, stock them, and deploy a bot — asserting every step actually produces what the
- * next one needs, and that DEPLOY_BOT is genuinely gated on having them.
+ * next one needs, and that DEPLOY_BOT is genuinely gated on having them. A stockpile locks to one
+ * resource kind (see machines.ts's lockedStockpileItem), so plank/block/flour each need their own —
+ * DEPLOY_BOT's own cost check already sums across every stockpile in the world, not just one.
  */
 describe('farm to first bot', () => {
   it('chops, mines, farms, crafts and deploys a Mk1 bot from raw resources alone', () => {
@@ -33,7 +35,9 @@ describe('farm to first bot', () => {
     const player = requireEntity(state, playerId)
     const benchSawId = addBenchSaw(state, 0, 0)
     const millId = addMill(state, 0, 1)
-    const stockpileId = addStockpile(state, 0, 2)
+    const plankStockpileId = addStockpile(state, 0, 2)
+    const blockStockpileId = addStockpile(state, 0, 3)
+    const flourStockpileId = addStockpile(state, 0, 4)
 
     // Deploying now must fail — nothing is stocked yet.
     const tooEarly = executeAction(state, playerId, {
@@ -107,33 +111,37 @@ describe('farm to first bot', () => {
     runTicks(state, 100)
     expect(requireEntity(state, millId).storage).toEqual({ flour: 1 })
 
-    // Stock everything the Mk1 bot needs.
+    // Stock everything the Mk1 bot needs — plank, block and flour each go to their own stockpile,
+    // since one no longer accepts more than a single resource kind.
     player.pos = { x: 1, y: 0 }
     expect(executeAction(state, playerId, { op: 'TAKE_FROM', target: benchSawId, item: 'plank' }).ok).toBe(true)
     runTicks(state, 20)
-    player.pos = { x: 1, y: 2 } // adjacent to the stockpile
-    expect(executeAction(state, playerId, { op: 'GIVE_TO', target: stockpileId }).ok).toBe(true)
+    player.pos = { x: 1, y: 2 } // adjacent to the plank stockpile
+    expect(executeAction(state, playerId, { op: 'GIVE_TO', target: plankStockpileId }).ok).toBe(true)
     runTicks(state, 20)
     player.pos = { x: 1, y: 0 }
     expect(executeAction(state, playerId, { op: 'TAKE_FROM', target: benchSawId, item: 'block' }).ok).toBe(true)
     runTicks(state, 20)
-    player.pos = { x: 1, y: 2 }
-    expect(executeAction(state, playerId, { op: 'GIVE_TO', target: stockpileId }).ok).toBe(true)
+    player.pos = { x: 1, y: 3 } // adjacent to the block stockpile
+    expect(executeAction(state, playerId, { op: 'GIVE_TO', target: blockStockpileId }).ok).toBe(true)
     runTicks(state, 20)
     player.pos = { x: 1, y: 1 }
     expect(executeAction(state, playerId, { op: 'TAKE_FROM', target: millId, item: 'flour' }).ok).toBe(true)
     runTicks(state, 20)
-    player.pos = { x: 1, y: 2 }
-    expect(executeAction(state, playerId, { op: 'GIVE_TO', target: stockpileId }).ok).toBe(true)
+    player.pos = { x: 1, y: 4 } // adjacent to the flour stockpile
+    expect(executeAction(state, playerId, { op: 'GIVE_TO', target: flourStockpileId }).ok).toBe(true)
     runTicks(state, 20)
-    expect(requireEntity(state, stockpileId).storage).toEqual({ plank: 1, block: 1, flour: 1 })
+    expect(requireEntity(state, plankStockpileId).storage).toEqual({ plank: 1 })
+    expect(requireEntity(state, blockStockpileId).storage).toEqual({ block: 1 })
+    expect(requireEntity(state, flourStockpileId).storage).toEqual({ flour: 1 })
 
     // The chain above proves each conversion mechanism works end to end, one unit at a time; the
     // Mk1 recipe needs more of two of them (4 planks, 2 blocks) than is worth mechanically
-    // repeating the same chop/mine/craft loop for here, so top the stockpile up to exactly what
+    // repeating the same chop/mine/craft loop for here, so top each stockpile up to exactly what
     // DEPLOY_BOT requires.
-    const stockpile = requireEntity(state, stockpileId)
-    stockpile.storage = { plank: 4, block: 2, flour: 1 }
+    requireEntity(state, plankStockpileId).storage = { plank: 4 }
+    requireEntity(state, blockStockpileId).storage = { block: 2 }
+    requireEntity(state, flourStockpileId).storage = { flour: 1 }
 
     // Deploy the Mk1 bot — this time it must succeed.
     const deployResult = executeAction(state, playerId, {
@@ -147,7 +155,9 @@ describe('farm to first bot', () => {
     })
 
     expect(deployResult.ok).toBe(true)
-    expect(requireEntity(state, stockpileId).storage).toEqual({ plank: 0, block: 0, flour: 0 })
+    expect(requireEntity(state, plankStockpileId).storage).toEqual({ plank: 0 })
+    expect(requireEntity(state, blockStockpileId).storage).toEqual({ block: 0 })
+    expect(requireEntity(state, flourStockpileId).storage).toEqual({ flour: 0 })
     expect(textDump(state)).toContain('type=bot')
   })
 })

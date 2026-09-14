@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { addBenchSaw, addBot, addGroundItem, addMill, addPlayer, addStockpile, createWorld, getEntity } from '../../src/sim/world'
+import { createBotRuntime } from '../../src/sim/vm'
 import { TUTORIAL_HINTS } from '../../src/ui/Tutorial'
 
 function hint(index: number) {
@@ -122,11 +123,29 @@ describe('tutorial hints', () => {
     expect(hint(5).isComplete(state)).toBe(true)
   })
 
-  it('step 7 completes once a bot exists', () => {
+  it('step 7 does not complete just because a bot exists — the player starts with a free, unprogrammed one', () => {
     const state = createWorld(5, 5, 1)
     expect(hint(6).isComplete(state)).toBe(false)
 
-    addBot(state, 1, 1)
+    const botId = addBot(state, 1, 1)
+    const program = { id: 'p', name: 'starter', version: 1, instructions: [] }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+    expect(hint(6).isComplete(state)).toBe(false)
+  })
+
+  it('step 7 completes once some bot has actually been given a program', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 1, 1)
+    const program = {
+      id: 'p',
+      name: 'starter',
+      version: 1,
+      instructions: [{ id: '1', op: 'MOVE_TO' as const, args: [] }],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
 
     expect(hint(6).isComplete(state)).toBe(true)
   })
