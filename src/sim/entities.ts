@@ -24,6 +24,11 @@ export function isItemKind(type: EntityType): type is ItemKind {
   return (ITEM_KINDS as EntityType[]).includes(type)
 }
 
+/** A tile holds at most one loose item at a time — this is the shared failure reason every
+ * ground-item spawn site (actions.ts's DROP, useVerb.ts's mine/harvest yields) reports when the
+ * tile it would land on is already taken. */
+export const GROUND_OCCUPIED = 'the ground here already has an item on it'
+
 /**
  * Opcodes costed here. MOVE_TO is deliberately absent — its duration comes from the
  * continuous per-tile movement system (movement.ts's MOVE_TICKS_PER_TILE), not this table.

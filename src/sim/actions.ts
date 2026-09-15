@@ -1,7 +1,7 @@
 import { assignRoutine, copyProgram, editProgram, saveRoutine, setBotPaused, setBotTier, setFailurePolicy, upgradeBotTier } from './botControl'
 import { hasStockedCost, BOT_TIER_COSTS, deductStockedCost } from './botCosts'
 import { createBotRuntime, type FailurePolicy } from './botRuntime'
-import { createGroundItem, getActionCost, isItemKind, staticEntity } from './entities'
+import { createGroundItem, getActionCost, GROUND_OCCUPIED, isItemKind, staticEntity } from './entities'
 import { BUILDING_COSTS, capacityFor, createBlueprint, lockedStockpileItem, recipesFor, totalStored } from './machines'
 import { plant } from './planting'
 import type { BotTier, Instruction, Program } from './program'
@@ -104,7 +104,7 @@ function drop(state: SimState, actor: Entity, target: TileRef): ActionResult {
     return fail('can only drop at your own feet')
   }
   if (entitiesAt(state, target.x, target.y).some((entity) => isItemKind(entity.type))) {
-    return fail('the ground here already has an item on it')
+    return fail(GROUND_OCCUPIED)
   }
 
   const heldKind = actor.held

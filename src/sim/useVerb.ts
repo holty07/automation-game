@@ -1,9 +1,9 @@
-import { createGroundItem, getActionCost, RESOURCE_YIELD } from './entities'
+import { createGroundItem, getActionCost, GROUND_OCCUPIED, isItemKind, RESOURCE_YIELD } from './entities'
 import { createSeedling, createTilledSoil, WHEAT_GROW_TICKS } from './farming'
 import { SAPLING_DROP_CHANCE } from './planting'
 import { isAdjacent } from './pathfind'
 import type { Entity, EntityId, ItemKind, SimState, TileRef } from './types'
-import { addEntity, getEntity, removeEntity } from './world'
+import { addEntity, entitiesAt, getEntity, isWalkable, removeEntity } from './world'
 
 /** Everything the USE verb can do: chop/mine (tree, rock — deferred, see useResource/stepHarvests)
  * and the farming chain (soil, tilled soil, wheat — all still instant). Split out of actions.ts to
@@ -25,6 +25,34 @@ function fail(reason: string): UseResult {
 
 function spawnGroundItem(state: SimState, kind: ItemKind, pos: TileRef): EntityId {
   return addEntity(state, createGroundItem(kind, pos))
+}
+
+/** Whether a tile already has a loose item sitting on it — a resource yield can't land there any
+ * more than a player's own DROP can (see actions.ts's drop). */
+function hasGroundItem(state: SimState, pos: TileRef): boolean {
+  return entitiesAt(state, pos.x, pos.y).some((entity) => isItemKind(entity.type))
+}
+
+/** The four tiles orthogonally next to `pos`, in a fixed order — deterministic, so trying them in
+ * turn never depends on iteration order. */
+const ADJACENT_OFFSETS: readonly TileRef[] = [
+  { x: 0, y: -1 },
+  { x: 1, y: 0 },
+  { x: 0, y: 1 },
+  { x: -1, y: 0 },
+]
+
+/** The first walkable, item-free tile next to `pos`, or null if all four are blocked or already
+ * hold an item — used to give a bonus sapling somewhere to land when the tile it grew from (the
+ * felled tree's own tile) is already taken by that tree's log. */
+function findFreeAdjacentTile(state: SimState, pos: TileRef): TileRef | null {
+  for (const offset of ADJACENT_OFFSETS) {
+    const candidate = { x: pos.x + offset.x, y: pos.y + offset.y }
+    if (isWalkable(state, candidate) && !hasGroundItem(state, candidate)) {
+      return candidate
+    }
+  }
+  return null
 }
 
 /**
@@ -53,7 +81,13 @@ function useResource(state: SimState, actor: Entity, target: Entity, resourceTyp
  * planting.ts). Mirrors farming.ts's stepCrops/planting.ts's stepTreeGrowth: a resource being
  * harvested has no storage to deposit into, so it's replaced by a new entity entirely instead of
  * going through stepMachines. Wired into tick.ts before stepBots, so a bot's next queued
- * instruction (typically PICK_UP lastResult) sees the yield already exist. */
+ * instruction (typically PICK_UP lastResult) sees the yield already exist.
+ *
+ * The tree/rock's own tile is always free at this point — it was a blocking tile for as long as
+ * the tree/rock stood on it, so nothing could ever have dropped an item there — but the check
+ * still guards the (rare, e.g. hand-edited fixture) case where it isn't: the harvest simply stays
+ * pending, re-tried next tick, rather than ever destroying an item to make room. A bonus sapling
+ * has no such guarantee, since it shares the log's own tile — see findFreeAdjacentTile. */
 export function stepHarvests(state: SimState): void {
   for (const entity of state.entities) {
     if (entity.type !== 'tree' && entity.type !== 'rock') {
@@ -62,12 +96,18 @@ export function stepHarvests(state: SimState): void {
     if (entity.craftingUntilTick === null || state.tick < entity.craftingUntilTick) {
       continue
     }
-    const resourceType = entity.type
     const pos = entity.pos
+    if (hasGroundItem(state, pos)) {
+      continue
+    }
+    const resourceType = entity.type
     removeEntity(state, entity.id)
     spawnGroundItem(state, RESOURCE_YIELD[resourceType], pos)
     if (resourceType === 'tree' && state.rng.next() < SAPLING_DROP_CHANCE) {
-      spawnGroundItem(state, 'sapling', pos)
+      const saplingTile = findFreeAdjacentTile(state, pos)
+      if (saplingTile !== null) {
+        spawnGroundItem(state, 'sapling', saplingTile)
+      }
     }
   }
 }
@@ -79,6 +119,9 @@ export function stepHarvests(state: SimState): void {
 function useStoneDeposit(state: SimState, actor: Entity): UseResult {
   if (actor.held !== 'pickaxe') {
     return fail('needs a pickaxe to mine this')
+  }
+  if (hasGroundItem(state, actor.pos)) {
+    return fail(GROUND_OCCUPIED)
   }
   const cost = getActionCost('USE', 'stoneDeposit')
   const producedEntityId = spawnGroundItem(state, 'stone', actor.pos)
@@ -116,6 +159,9 @@ function useTilledSoil(state: SimState, actor: Entity, target: Entity): UseResul
  * useStoneDeposit: a fixture's own tile never doubles as a loose-item drop spot, so the two are
  * always visually and click-wise distinct instead of one potentially drawing over the other. */
 function useWheat(state: SimState, actor: Entity, target: Entity): UseResult {
+  if (hasGroundItem(state, actor.pos)) {
+    return fail(GROUND_OCCUPIED)
+  }
   const cost = getActionCost('USE', 'wheat')
   const spawnPos = target.pos
   removeEntity(state, target.id)

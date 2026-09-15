@@ -13,6 +13,7 @@ import {
   addTree,
   createWorld,
   getEntity,
+  removeEntity,
 } from '../../src/sim/world'
 import { executeAction } from '../../src/sim/actions'
 import { BOT_TIER_COSTS } from '../../src/sim/botCosts'
@@ -156,11 +157,32 @@ describe('executeAction', () => {
     expect(stone?.pos).toEqual({ x: 1, y: 1 })
     expect(getEntity(state, depositId)?.pos).toEqual({ x: 2, y: 1 })
 
-    // Mineable again immediately once the actor is free — never runs out.
+    // Mineable again immediately once the actor is free and the ground is clear — never runs out.
     player.busyUntilTick = state.tick
+    if (stone === undefined) {
+      throw new Error('stone missing')
+    }
+    removeEntity(state, stone.id) // stand-in for the player having carried the first stone away
     const second = executeAction(state, playerId, { op: 'USE', target: depositId })
     expect(second.ok).toBe(true)
     expect(getEntity(state, depositId)?.type).toBe('stoneDeposit')
+  })
+
+  it('rejects mining a stone deposit while the previous stone is still on the ground', () => {
+    const state = createWorld(5, 5, 1)
+    const playerId = addPlayer(state, 1, 1)
+    const player = getEntity(state, playerId)
+    if (player === undefined) {
+      throw new Error('player missing')
+    }
+    player.held = 'pickaxe'
+    const depositId = addStoneDeposit(state, 2, 1)
+    addGroundItem(state, 'stone', 1, 1)
+
+    const result = executeAction(state, playerId, { op: 'USE', target: depositId })
+
+    expect(result).toEqual({ ok: false, reason: 'the ground here already has an item on it' })
+    expect(player.held).toBe('pickaxe')
   })
 
   it('sometimes drops a sapling alongside the log once the chop completes', () => {
@@ -183,6 +205,68 @@ describe('executeAction', () => {
     noDropState.tick += 40
     stepHarvests(noDropState)
     expect(noDropState.entities.some((entity) => entity.type === 'sapling')).toBe(false)
+  })
+
+  it('drops a bonus sapling on a free adjacent tile, not the log\'s own tile', () => {
+    // Seed 7's first rng draw lands a sapling -- see the test above.
+    const state = createWorld(5, 5, 7)
+    const playerId = addPlayer(state, 1, 1)
+    const treeId = addTree(state, 2, 1)
+    executeAction(state, playerId, { op: 'USE', target: treeId })
+    state.tick += 40
+
+    stepHarvests(state)
+
+    const log = state.entities.find((entity) => entity.type === 'log')
+    const sapling = state.entities.find((entity) => entity.type === 'sapling')
+    expect(log?.pos).toEqual({ x: 2, y: 1 })
+    expect(sapling).toBeDefined()
+    expect(sapling?.pos).not.toEqual({ x: 2, y: 1 })
+  })
+
+  it('drops no bonus sapling when every adjacent tile is already blocked or occupied', () => {
+    const state = createWorld(5, 5, 7)
+    const playerId = addPlayer(state, 1, 1)
+    const treeId = addTree(state, 2, 1)
+    // Surround the tree on all four sides so findFreeAdjacentTile has nowhere to place a sapling:
+    // three neighbours blocked by rock, and the fourth -- the player's own tile, the one they
+    // stand on to reach the tree -- already has an item at their feet (a reachable state, since a
+    // loose item never blocks movement).
+    addRock(state, 2, 0)
+    addRock(state, 3, 1)
+    addRock(state, 2, 2)
+    addGroundItem(state, 'stone', 1, 1)
+    executeAction(state, playerId, { op: 'USE', target: treeId })
+    state.tick += 40
+
+    stepHarvests(state)
+
+    expect(state.entities.some((entity) => entity.type === 'log')).toBe(true)
+    expect(state.entities.some((entity) => entity.type === 'sapling')).toBe(false)
+  })
+
+  it('leaves a completed chop pending if its own tile somehow already has an item on it', () => {
+    const state = createWorld(5, 5, 4) // seed 4 never rolls a sapling -- isolates this to the log
+    const playerId = addPlayer(state, 1, 1)
+    const treeId = addTree(state, 2, 1)
+    const tree = getEntity(state, treeId)
+    if (tree === undefined) {
+      throw new Error('tree missing')
+    }
+    executeAction(state, playerId, { op: 'USE', target: treeId })
+    state.tick += 40
+    // Simulate the (otherwise unreachable) case of the tree's own tile already holding an item.
+    addGroundItem(state, 'stone', 2, 1)
+
+    stepHarvests(state)
+    expect(getEntity(state, treeId)?.type).toBe('tree')
+    expect(state.entities.some((entity) => entity.type === 'log')).toBe(false)
+
+    // Once the ground clears, the pending chop completes on the next tick it's stepped.
+    removeEntity(state, state.entities.find((entity) => entity.type === 'stone')?.id ?? -1)
+    stepHarvests(state)
+    expect(getEntity(state, treeId)).toBeUndefined()
+    expect(state.entities.some((entity) => entity.type === 'log')).toBe(true)
   })
 
   it('tills soil into tilled soil, in place', () => {
@@ -228,6 +312,18 @@ describe('executeAction', () => {
     expect(grain?.pos).toEqual({ x: 1, y: 1 })
     const tilled = state.entities.find((entity) => entity.type === 'tilledSoil')
     expect(tilled?.pos).toEqual({ x: 2, y: 1 })
+  })
+
+  it('rejects harvesting wheat while the actor already has an item at their feet', () => {
+    const state = createWorld(5, 5, 1)
+    const playerId = addPlayer(state, 1, 1)
+    const wheatId = addEntity(state, createWheat({ x: 2, y: 1 }))
+    addGroundItem(state, 'grain', 1, 1)
+
+    const result = executeAction(state, playerId, { op: 'USE', target: wheatId })
+
+    expect(result).toEqual({ ok: false, reason: 'the ground here already has an item on it' })
+    expect(getEntity(state, wheatId)?.type).toBe('wheat')
   })
 
   it('plants a held sapling into a growing young tree on an adjacent, empty tile', () => {
