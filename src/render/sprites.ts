@@ -28,6 +28,7 @@ const ENTITY_COLOURS: Record<EntityType, string> = {
   sapling: '#8fd97a',
   stockpile: '#5b4636',
   benchSaw: '#7a5230',
+  stoneCutter: '#7d7a72',
   mill: '#6b5b8a',
   blueprint: '#5b8fd1',
   soil: '#6b4a2f',

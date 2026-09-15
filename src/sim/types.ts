@@ -17,6 +17,7 @@ export type EntityType =
   | 'youngTree'
   | 'stockpile'
   | 'benchSaw'
+  | 'stoneCutter'
   | 'mill'
   | 'blueprint'
   | 'soil'
@@ -28,7 +29,7 @@ export type EntityType =
 /** Things the player can place on an empty tile, via a blueprint — buildings, plus a new bot,
  * which starts with an empty program once its blueprint is fully stocked (see machines.ts's
  * stepBlueprints). */
-export type BuildableType = 'stockpile' | 'benchSaw' | 'mill' | 'bot'
+export type BuildableType = 'stockpile' | 'benchSaw' | 'stoneCutter' | 'mill' | 'bot'
 
 export type EntityId = number
 

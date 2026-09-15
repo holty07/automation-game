@@ -47,7 +47,7 @@ export function textDump(state: SimState): string {
           .join(',')
         extra += ` storage=${contents === '' ? 'empty' : contents}`
       }
-      if (entity.type === 'benchSaw' || entity.type === 'mill') {
+      if (entity.type === 'benchSaw' || entity.type === 'stoneCutter' || entity.type === 'mill') {
         extra +=
           entity.craftingUntilTick === null
             ? ' crafting=idle'

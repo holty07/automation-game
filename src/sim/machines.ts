@@ -20,17 +20,21 @@ function recipeTable(recipes: Recipe[]): Partial<Record<ItemKind, Recipe>> {
 }
 
 /** The bench saw refines raw resources into successively finer materials: wood into planks (the
- * bot body), stone into blocks and onward into the gears/circuits/cores the Mk2-4 upgrade path
- * needs — plus a plank into a pickaxe, the tool a stone deposit needs to be mined at all. Each
- * recipe is keyed by its input, so giving the bench saw an item looks up the right one. */
+ * bot body) and onward into the gears/circuits/cores the Mk2-4 upgrade path needs — plus a plank
+ * into a pickaxe, the tool a stone deposit needs to be mined at all. Stone into blocks is the
+ * stone cutter's job instead (see STONE_CUTTER_RECIPES), not the bench saw's. Each recipe is keyed
+ * by its input, so giving the bench saw an item looks up the right one. */
 export const BENCH_SAW_RECIPES = recipeTable([
   { input: 'log', output: 'plank', ticks: 80 },
-  { input: 'stone', output: 'block', ticks: 80 },
   { input: 'block', output: 'gear', ticks: 100 },
   { input: 'gear', output: 'circuit', ticks: 120 },
   { input: 'circuit', output: 'core', ticks: 150 },
   { input: 'plank', output: 'pickaxe', ticks: 60 },
 ])
+
+/** The stone cutter turns raw stone into blocks — split out of the bench saw so a dedicated
+ * building handles that step of the resource chain. */
+export const STONE_CUTTER_RECIPES = recipeTable([{ input: 'stone', output: 'block', ticks: 80 }])
 
 /** The mill turns harvested grain into the flour a Mk1 bot needs. */
 export const MILL_RECIPES = recipeTable([{ input: 'grain', output: 'flour', ticks: 60 }])
@@ -40,6 +44,8 @@ export function recipesFor(type: EntityType): Partial<Record<ItemKind, Recipe>> 
   switch (type) {
     case 'benchSaw':
       return BENCH_SAW_RECIPES
+    case 'stoneCutter':
+      return STONE_CUTTER_RECIPES
     case 'mill':
       return MILL_RECIPES
     default:
@@ -47,21 +53,34 @@ export function recipesFor(type: EntityType): Partial<Record<ItemKind, Recipe>> 
   }
 }
 
-/** Flat cap on total items (summed across kinds) a container can hold — no economy tuning exists
- * yet, this just gives the CONTAINER_FULL condition something real to check. */
+/** Flat cap on total items (summed across kinds) a machine or blueprint can hold — no economy
+ * tuning exists yet, this just gives the CONTAINER_FULL condition something real to check.
+ * Stockpiles use the larger STOCKPILE_CAPACITY instead — see capacityFor. */
 export const CONTAINER_CAPACITY = 50
+
+/** A stockpile exists specifically to hold a lot of one resource, so it gets a much higher cap
+ * than a machine's small in-progress buffer. Still finite — a stockpile can't just grow forever. */
+export const STOCKPILE_CAPACITY = 100
+
+/** The storage cap for a given storage-bearing entity type — a stockpile gets STOCKPILE_CAPACITY,
+ * everything else (machines, blueprints) gets the smaller CONTAINER_CAPACITY. */
+export function capacityFor(type: EntityType): number {
+  return type === 'stockpile' ? STOCKPILE_CAPACITY : CONTAINER_CAPACITY
+}
 
 /** Materials a blueprint needs delivered before stepBlueprints completes it into the finished
  * building (or, for `bot`, a freshly assigned Mk1 bot) — nothing here is free to place, only free
- * to plan. stockpile and benchSaw are costed in raw log/stone (choppable/mineable with no machine
- * at all), not plank/block, since those are only ever produced BY a bench saw — costing the bench
- * saw's own blueprint in them would make it impossible to ever build the first one. mill and bot
- * can safely cost plank/block/flour: by the time a player wants either, a bench saw (and so a
- * plank/block supply) already exists. bot reuses BOT_TIER_COSTS.mk1 so the two costs never drift
- * apart — upgrading a tier and building the bot in the first place stay quoted the same way. */
+ * to plan. stockpile, benchSaw and stoneCutter are costed in raw log/stone (choppable/mineable
+ * with no machine at all), not plank/block, since those are only ever produced BY a bench saw or
+ * stone cutter — costing either one's own blueprint in them would make it impossible to ever build
+ * the first one. mill and bot can safely cost plank/block/flour: by the time a player wants
+ * either, a bench saw and stone cutter (and so a plank/block supply) already exist. bot reuses
+ * BOT_TIER_COSTS.mk1 so the two costs never drift apart — upgrading a tier and building the bot in
+ * the first place stay quoted the same way. */
 export const BUILDING_COSTS: Record<BuildableType, Partial<Record<ItemKind, number>>> = {
   stockpile: { log: 2 },
   benchSaw: { log: 2, stone: 2 },
+  stoneCutter: { log: 2, stone: 2 },
   mill: { plank: 4, block: 1 },
   bot: BOT_TIER_COSTS.mk1,
 }
@@ -84,6 +103,10 @@ export function createStockpile(pos: TileRef): EntityData {
 
 export function createBenchSaw(pos: TileRef): EntityData {
   return { ...staticEntity('benchSaw', pos), storage: {} }
+}
+
+export function createStoneCutter(pos: TileRef): EntityData {
+  return { ...staticEntity('stoneCutter', pos), storage: {} }
 }
 
 export function createMill(pos: TileRef): EntityData {

@@ -83,6 +83,7 @@ const ACTION_COSTS: Record<string, number> = {
   'TAKE_FROM:sapling': 8,
   'BUILD:stockpile': 20,
   'BUILD:benchSaw': 20,
+  'BUILD:stoneCutter': 20,
   'BUILD:mill': 20,
   'BUILD:bot': 20,
   'PLANT:sapling': 30,

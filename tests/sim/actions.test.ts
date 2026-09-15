@@ -8,6 +8,7 @@ import {
   addPlayer,
   addRock,
   addStockpile,
+  addStoneCutter,
   addStoneDeposit,
   addTree,
   createWorld,
@@ -16,7 +17,7 @@ import {
 import { executeAction } from '../../src/sim/actions'
 import { BOT_TIER_COSTS } from '../../src/sim/botCosts'
 import { createSoil, createTilledSoil, createWheat, WHEAT_GROW_TICKS } from '../../src/sim/farming'
-import { BENCH_SAW_RECIPES, BUILDING_COSTS, CONTAINER_CAPACITY, MILL_RECIPES, stepBlueprints } from '../../src/sim/machines'
+import { BENCH_SAW_RECIPES, BUILDING_COSTS, CONTAINER_CAPACITY, MILL_RECIPES, STOCKPILE_CAPACITY, STONE_CUTTER_RECIPES, stepBlueprints } from '../../src/sim/machines'
 import { stepHarvests } from '../../src/sim/useVerb'
 import { createBotRuntime } from '../../src/sim/vm'
 import type { Instruction, Program } from '../../src/sim/program'
@@ -300,6 +301,41 @@ describe('executeAction', () => {
     expect(player.held).toBe('log')
   })
 
+  it('drops the held item as a ground item at the actor’s own feet', () => {
+    const state = createWorld(5, 5, 1)
+    const playerId = addPlayer(state, 1, 1)
+    const player = getEntity(state, playerId)
+    if (player === undefined) {
+      throw new Error('player missing')
+    }
+    player.held = 'log'
+
+    const result = executeAction(state, playerId, { op: 'DROP', target: { x: 1, y: 1 } })
+
+    expect(result.ok).toBe(true)
+    expect(player.held).toBeNull()
+    const dropped = getEntity(state, result.producedEntityId ?? -1)
+    expect(dropped?.type).toBe('log')
+    expect(dropped?.pos).toEqual({ x: 1, y: 1 })
+  })
+
+  it('rejects DROP onto a tile that already holds a ground item', () => {
+    const state = createWorld(5, 5, 1)
+    const playerId = addPlayer(state, 1, 1)
+    addGroundItem(state, 'stone', 1, 1)
+    const player = getEntity(state, playerId)
+    if (player === undefined) {
+      throw new Error('player missing')
+    }
+    player.held = 'log'
+
+    const result = executeAction(state, playerId, { op: 'DROP', target: { x: 1, y: 1 } })
+
+    expect(result).toEqual({ ok: false, reason: 'the ground here already has an item on it' })
+    expect(player.held).toBe('log')
+    expect(state.entities.some((entity) => entity.type === 'log')).toBe(false)
+  })
+
   it('rejects MOVE_TO outside the world', () => {
     const state = createWorld(5, 5, 1)
     const playerId = addPlayer(state, 1, 1)
@@ -570,7 +606,7 @@ describe('executeAction', () => {
       expect(result).toEqual({ ok: false, reason: 'target is out of reach' })
     })
 
-    it('rejects GIVE_TO once the container is at capacity', () => {
+    it('rejects GIVE_TO once a stockpile reaches its (larger) capacity', () => {
       const state = createWorld(5, 5, 1)
       const playerId = addPlayer(state, 1, 1)
       const stockpileId = addStockpile(state, 2, 1)
@@ -579,13 +615,78 @@ describe('executeAction', () => {
       if (stockpile === undefined || player === undefined) {
         throw new Error('missing entity')
       }
-      stockpile.storage = { log: CONTAINER_CAPACITY }
+      stockpile.storage = { log: STOCKPILE_CAPACITY - 1 }
       player.held = 'log'
 
+      // One below capacity still accepts a delivery...
+      expect(executeAction(state, playerId, { op: 'GIVE_TO', target: stockpileId }).ok).toBe(true)
+      expect(stockpile.storage).toEqual({ log: STOCKPILE_CAPACITY })
+
+      // ...but at capacity, the next one is rejected.
+      player.held = 'log'
+      player.busyUntilTick = state.tick
       const result = executeAction(state, playerId, { op: 'GIVE_TO', target: stockpileId })
 
       expect(result).toEqual({ ok: false, reason: 'container is full' })
       expect(player.held).toBe('log')
+    })
+
+    it('rejects GIVE_TO once a machine reaches its (smaller) capacity, well below a stockpile\'s', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const benchSawId = addBenchSaw(state, 2, 1)
+      const benchSaw = getEntity(state, benchSawId)
+      const player = getEntity(state, playerId)
+      if (benchSaw === undefined || player === undefined) {
+        throw new Error('missing entity')
+      }
+      // A pile of an item the bench saw doesn't craft from, so the capacity check is what's under
+      // test here, not the recipe lookup.
+      benchSaw.storage = { core: CONTAINER_CAPACITY }
+      player.held = 'log'
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: benchSawId })
+
+      expect(result).toEqual({ ok: false, reason: 'container is full' })
+      expect(player.held).toBe('log')
+    })
+
+    it('feeds a stone into a stone cutter, starting its recipe', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const stoneCutterId = addStoneCutter(state, 2, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'stone'
+      const blockRecipe = STONE_CUTTER_RECIPES.stone
+      if (blockRecipe === undefined) {
+        throw new Error('expected recipe missing')
+      }
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: stoneCutterId })
+
+      expect(result.ok).toBe(true)
+      expect(player.held).toBeNull()
+      expect(getEntity(state, stoneCutterId)?.craftingStartedTick).toBe(state.tick)
+      expect(getEntity(state, stoneCutterId)?.craftingUntilTick).toBe(state.tick + blockRecipe.ticks)
+      expect(getEntity(state, stoneCutterId)?.craftingOutput).toBe('block')
+    })
+
+    it('rejects feeding a bench saw stone, since blocks are now the stone cutter\'s job', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const benchSawId = addBenchSaw(state, 2, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'stone'
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: benchSawId })
+
+      expect(result).toEqual({ ok: false, reason: 'the machine cannot use that' })
     })
   })
 
@@ -789,6 +890,19 @@ describe('executeAction', () => {
       expect(built?.type).toBe('blueprint')
       expect(built?.blueprintOf).toBe('benchSaw')
       expect(built?.craftingUntilTick).toBeNull()
+    })
+
+    it('places a stone cutter blueprint on an empty adjacent tile', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+
+      const result = executeAction(state, playerId, { op: 'BUILD', kind: 'stoneCutter', target: { x: 2, y: 1 } })
+
+      expect(result.ok).toBe(true)
+      const built = getEntity(state, result.producedEntityId ?? -1)
+      expect(built?.type).toBe('blueprint')
+      expect(built?.blueprintOf).toBe('stoneCutter')
+      expect(built?.storage).toEqual({})
     })
 
     it('places a mill blueprint on an empty adjacent tile', () => {

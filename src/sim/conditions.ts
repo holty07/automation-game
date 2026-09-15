@@ -1,4 +1,4 @@
-import { CONTAINER_CAPACITY, totalStored } from './machines'
+import { capacityFor, totalStored } from './machines'
 import type { Condition, TargetRef } from './program'
 import type { ResolvedTarget } from './targeting'
 import { resolveEntityTarget, resolveTarget } from './targeting'
@@ -38,7 +38,7 @@ export function evaluateCondition(state: SimState, botId: EntityId, condition: C
     case 'CONTAINER_FULL': {
       const containerId = resolveContainer(state, botId, condition.container, lastResult)
       const container = containerId === null ? undefined : getEntity(state, containerId)
-      return container?.storage !== null && container?.storage !== undefined && totalStored(container.storage) >= CONTAINER_CAPACITY
+      return container?.storage !== null && container?.storage !== undefined && totalStored(container.storage) >= capacityFor(container.type)
     }
     case 'INVENTORY_FULL':
       return actor.held !== null

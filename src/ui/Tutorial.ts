@@ -15,9 +15,9 @@ function hasEntity(state: SimState, type: string): boolean {
 
 /** True once `kind` exists anywhere: as a ground item, held by an actor, or sitting in some
  * machine's or container's storage. Crafted materials (planks, blocks, flour) are produced
- * straight into the bench saw's/mill's own storage, then usually carried by hand or into a
- * stockpile -- they rarely ever touch the ground, so checking only for a standalone item entity
- * (as hasEntity does) would almost never trigger. */
+ * straight into the bench saw's/stone cutter's/mill's own storage, then usually carried by hand or
+ * into a stockpile -- they rarely ever touch the ground, so checking only for a standalone item
+ * entity (as hasEntity does) would almost never trigger. */
 function hasItem(state: SimState, kind: ItemKind): boolean {
   return state.entities.some((entity) => entity.type === kind || entity.held === kind || (entity.storage?.[kind] ?? 0) > 0)
 }
@@ -46,7 +46,7 @@ export const TUTORIAL_HINTS: readonly Hint[] = [
     isComplete: (state) => hasEntity(state, 'benchSaw'),
   },
   {
-    text: 'Once your bench saw is built, feed it logs for planks and stone for blocks.',
+    text: 'Once your bench saw is built, feed it logs for planks. Build a stone cutter too and feed it stone for blocks.',
     isComplete: (state) => hasItem(state, 'plank') && hasItem(state, 'block'),
   },
   {

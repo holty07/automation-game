@@ -19,6 +19,7 @@ const HOVER_PRIORITY: EntityType[] = [
   'blueprint',
   'stockpile',
   'benchSaw',
+  'stoneCutter',
   'mill',
   'tree',
   'rock',
