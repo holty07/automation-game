@@ -25,10 +25,6 @@ async function tapDirection(page: Page, key: string): Promise<void> {
 test('player can open a bot’s script and flip a target from absolute to nearestOf', async ({ page }) => {
   await page.goto('/')
 
-  // Deploying a bot now costs materials (M9); stock them via the dev-only test hook rather than
-  // simulating minutes of real chopping/mining/farming just to reach the editor.
-  await page.evaluate(() => window.__debugStockMk1?.())
-
   const TILE_SIZE = 32
   const canvas = page.locator('#game')
   const box = await canvas.boundingBox()
@@ -36,20 +32,19 @@ test('player can open a bot’s script and flip a target from absolute to neares
     throw new Error('#game canvas has no layout box.')
   }
 
-  await page.getByRole('button', { name: 'Record' }).click()
+  // The free starter bot, one tile left of the player — recording onto it needs no materials or
+  // blueprint, so it's the quickest way to reach an editor row with a target to flip.
+  await canvas.click({ position: { x: box.width / 2 - TILE_SIZE, y: box.height / 2 } })
+  await page.locator('.script-editor').getByRole('button', { name: 'Record' }).click()
   await canvas.click({ position: { x: box.width / 2 + TILE_SIZE, y: box.height / 2 } })
-  // DEPLOY_BOT is gated by the player's own busy check, so wait for the recorded walk (4 ticks
-  // at 20Hz) to finish before stopping — otherwise Stop silently fails to deploy the bot.
   await page.waitForTimeout(800)
-  await page.getByRole('button', { name: 'Stop' }).click()
+  await page.locator('.script-editor').getByRole('button', { name: 'Stop' }).click()
 
-  // Stop no longer deploys straight away — it shows the generalised program for review first.
+  // Stop shows the generalised program for review before splicing it onto the bot's program.
   await page.getByRole('button', { name: 'Assign to bot' }).click()
 
-  // Two now: the free starter bot the player always begins with, plus this newly deployed one —
-  // which sorts last, since bot ids only ever increase.
-  await expect(page.locator('.bot-list-row')).toHaveCount(2)
-  await page.locator('.bot-list-row').last().click()
+  // Re-open to force a fresh render of the now-updated program.
+  await page.locator('.bot-list-row').click()
 
   const modeSelect = page.locator('.instruction-row:not(.instruction-row-implicit) .arg-editor select').first()
   await expect(modeSelect).toHaveValue('absolute')
@@ -63,10 +58,13 @@ test('player can open a bot’s script and flip a target from absolute to neares
 /**
  * The player starts with one free bot (main.ts), standing one tile left of the player's fixed
  * seed-1 start. Clicking it now only opens its script — recording starts from the Record button
- * inside that panel, and stopping splices the result onto the end of the bot's existing program
- * (EDIT_PROGRAM via program.ts's appendInstructions) rather than replacing it or spawning a new,
- * materials-costed bot the way the toolbar's own Record button does. Recording a second time,
- * after the first program is already assigned, must add to it rather than start over.
+ * inside that panel. Each step is written straight onto the bot's live program the instant it's
+ * captured (Toolbar.ts's appendLiveInstruction), so the open script editor visibly grows mid-
+ * recording, not just once Stop is clicked; stopping then replaces that raw tail with the
+ * generalised, reviewed result (EDIT_PROGRAM via program.ts's appendInstructions) rather than
+ * appending a second time. New bots are built from a materials-costed blueprint instead (see
+ * Toolbar.ts) — recording never spawns one. Recording a second time, after the first program is
+ * already assigned, must add to it rather than start over.
  */
 test('selecting the free starter bot and pressing Record teaches it a job, additively', async ({ page }) => {
   await page.goto('/')
@@ -93,6 +91,10 @@ test('selecting the free starter bot and pressing Record teaches it a job, addit
   // Record a single step: walk one tile right of spawn.
   await tapDirection(page, 'ArrowRight')
 
+  // Live: the step is already sitting in the bot's program mid-recording, well before Stop —
+  // the panel is still open on this same bot, so it re-renders on its own (ScriptEditor.update()).
+  await expect(page.locator('.instruction-row:not(.instruction-row-implicit)')).toHaveCount(1)
+
   await scriptEditorRecordButton.click()
   await page.getByRole('button', { name: 'Assign to bot' }).click()
 
@@ -118,11 +120,16 @@ test('selecting the free starter bot and pressing Record teaches it a job, addit
 })
 
 /**
- * While a recording is running for one entry point, the other must visibly refuse to start a
- * second, conflicting one rather than silently stealing or corrupting it.
+ * Only one script editor panel exists, but recording is tied to whichever bot it was started for,
+ * not to whichever bot the panel currently shows — switching the panel to a different bot mid-
+ * recording must not let that bot silently steal or corrupt it, so its own Record button visibly
+ * refuses to start a second, conflicting recording.
  */
-test('the toolbar Record button is disabled while a script editor recording is running, and vice versa', async ({ page }) => {
+test('a second bot’s Record button is disabled while another bot’s recording is running', async ({ page }) => {
   await page.goto('/')
+
+  // A second bot, independent of the free starter bot, without placing and stocking a blueprint.
+  await page.evaluate(() => window.__debugBuildBot?.())
 
   const TILE_SIZE = 32
   const canvas = page.locator('#game')
@@ -130,16 +137,23 @@ test('the toolbar Record button is disabled while a script editor recording is r
   if (box === null) {
     throw new Error('#game canvas has no layout box.')
   }
+  await expect(page.locator('.bot-list-row')).toHaveCount(2)
 
+  const recordButton = page.locator('.script-editor').getByRole('button', { name: /^Record$|^Stop$|^Recording/ })
+
+  // Open the starter bot (one tile left of the player) and start recording onto it.
   await canvas.click({ position: { x: box.width / 2 - TILE_SIZE, y: box.height / 2 } })
-  const scriptEditorRecordButton = page.locator('.script-editor').getByRole('button', { name: /^Record$|^Stop$/ })
-  const toolbarRecordButton = page.locator('.toolbar').getByRole('button', { name: /^Record$|^Stop$|^Recording/ })
+  await recordButton.click()
+  await expect(recordButton).toHaveText('Stop')
 
-  await scriptEditorRecordButton.click()
-  await expect(scriptEditorRecordButton).toHaveText('Stop')
-  await expect(toolbarRecordButton).toBeDisabled()
+  // Switch the panel to the second bot without stopping — its own button must refuse to record.
+  await page.locator('.bot-list-row').last().click()
+  await expect(recordButton).toBeDisabled()
+  await expect(recordButton).toHaveText('Recording elsewhere…')
 
-  await scriptEditorRecordButton.click()
-  await expect(toolbarRecordButton).toBeEnabled()
-  await expect(toolbarRecordButton).toHaveText('Record')
+  // Switching back to the bot actually recording shows its own Stop button, live, again.
+  await page.locator('.bot-list-row').first().click()
+  await expect(recordButton).toBeEnabled()
+  await expect(recordButton).toHaveText('Stop')
+  await recordButton.click()
 })

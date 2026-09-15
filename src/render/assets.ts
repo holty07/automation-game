@@ -41,6 +41,11 @@ function loadImages(sources: Record<string, string>): Map<string, HTMLImageEleme
 const tileImages = loadImages(tileSources)
 const entityImages = loadImages(entitySources)
 
+/** Id -> raw sprite URL, for a plain `<img src>` icon (e.g. the build nav) rather than a canvas
+ * draw — unlike entityImage()/tileImage() this doesn't wait on decode/`complete`, since the
+ * browser loads and paints an `<img>` on its own. */
+const entityIconUrls = new Map<string, string>(Object.entries(entitySources).map(([path, url]) => [idFromPath(path), url]))
+
 /** The loaded sprite for a tile, or null if no art has been dropped in yet (or it hasn't
  * finished decoding), so the renderer can fall back to the flat colour placeholder. */
 export function tileImage(tile: TileType): HTMLImageElement | null {
@@ -52,4 +57,10 @@ export function tileImage(tile: TileType): HTMLImageElement | null {
 export function entityImage(type: EntityType): HTMLImageElement | null {
   const image = entityImages.get(type)
   return image !== undefined && image.complete && image.naturalWidth > 0 ? image : null
+}
+
+/** The raw URL for an entity/item sprite, or null if no art has been dropped in yet — see
+ * entityIconUrls above. */
+export function entityIconUrl(type: EntityType): string | null {
+  return entityIconUrls.get(type) ?? null
 }

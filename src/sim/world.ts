@@ -80,6 +80,7 @@ export function addPlayer(state: SimState, x: number, y: number): EntityId {
     storage: null,
     craftingUntilTick: null,
     craftingOutput: null,
+    craftingStartedTick: null,
     blueprintOf: null,
   })
 }

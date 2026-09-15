@@ -7,8 +7,16 @@ import { getEntity } from './world'
 
 export interface Recorder {
   readonly recording: boolean
-  /** Begins a new recording, discarding any instructions from a previous one that was never assigned. */
-  start(): void
+  /**
+   * Begins a new recording, discarding any instructions from a previous one that was never
+   * assigned. `onCapture`, if given, fires synchronously from `perform()` with each instruction
+   * the instant it's captured — the caller's hook for writing it straight onto a bot's live
+   * program, so the game's fiction (this is the bot's own memory, being written to as you
+   * demonstrate the job) holds even before the recording is stopped and reviewed. Purely a
+   * notification: the recorder itself has no notion of bots, programs or `executeAction` beyond
+   * running `request` through it.
+   */
+  start(onCapture?: (instruction: Instruction) => void): void
   /**
    * Taps executeAction: runs `request` exactly as it would run unrecorded, and while recording is
    * active, appends the equivalent Instruction whenever the action actually commits.
@@ -47,6 +55,7 @@ function targetTileFor(state: SimState, request: ActionRequest): TileRef | null 
       return null
     case 'EDIT_PROGRAM':
     case 'SET_FAILURE_POLICY':
+    case 'SET_BOT_PAUSED':
     case 'SET_BOT_TIER':
     case 'SAVE_ROUTINE':
     case 'ASSIGN_ROUTINE':
@@ -92,6 +101,7 @@ function toInstruction(id: string, request: ActionRequest, tile: TileRef): Instr
     case 'DEPLOY_BOT':
     case 'EDIT_PROGRAM':
     case 'SET_FAILURE_POLICY':
+    case 'SET_BOT_PAUSED':
     case 'SET_BOT_TIER':
     case 'SAVE_ROUTINE':
     case 'ASSIGN_ROUTINE':
@@ -106,17 +116,19 @@ export function createRecorder(): Recorder {
   let instructions: Instruction[] = []
   let targetTypes: Record<string, EntityType> = {}
   let nextInstructionNumber = 0
+  let onCapture: ((instruction: Instruction) => void) | null = null
 
   return {
     get recording(): boolean {
       return recording
     },
 
-    start(): void {
+    start(capture): void {
       recording = true
       instructions = []
       targetTypes = {}
       nextInstructionNumber = 0
+      onCapture = capture ?? null
     },
 
     perform(state: SimState, actorId: EntityId, request: ActionRequest): ActionResult {
@@ -132,6 +144,7 @@ export function createRecorder(): Recorder {
           if (entityType !== null) {
             targetTypes[instruction.id] = entityType
           }
+          onCapture?.(instruction)
         }
       }
 
@@ -140,6 +153,7 @@ export function createRecorder(): Recorder {
 
     stop(): Instruction[] {
       recording = false
+      onCapture = null
       const recorded = instructions
       instructions = []
       return recorded

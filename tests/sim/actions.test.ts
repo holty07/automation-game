@@ -17,6 +17,7 @@ import { executeAction } from '../../src/sim/actions'
 import { BOT_TIER_COSTS } from '../../src/sim/botCosts'
 import { createSoil, createTilledSoil, createWheat, WHEAT_GROW_TICKS } from '../../src/sim/farming'
 import { BENCH_SAW_RECIPES, BUILDING_COSTS, CONTAINER_CAPACITY, MILL_RECIPES, stepBlueprints } from '../../src/sim/machines'
+import { stepHarvests } from '../../src/sim/useVerb'
 import { createBotRuntime } from '../../src/sim/vm'
 import type { Instruction, Program } from '../../src/sim/program'
 import type { EntityId, SimState } from '../../src/sim/types'
@@ -67,7 +68,7 @@ describe('executeAction', () => {
     expect(result).toEqual({ ok: false, reason: 'target is out of reach' })
   })
 
-  it('mines a rock into stone', () => {
+  it('mines a rock: it stays in place mid-mine until the cost elapses, then becomes stone', () => {
     const state = createWorld(5, 5, 1)
     const playerId = addPlayer(state, 1, 1)
     const rockId = addRock(state, 2, 1)
@@ -75,9 +76,50 @@ describe('executeAction', () => {
     const result = executeAction(state, playerId, { op: 'USE', target: rockId })
 
     expect(result.ok).toBe(true)
-    const stone = state.entities.find((entity) => entity.id === result.producedEntityId)
-    expect(stone?.type).toBe('stone')
+    expect(result.producedEntityId).toBeUndefined()
+    expect(result.producedTile).toEqual({ x: 2, y: 1 })
+    const rock = getEntity(state, rockId)
+    expect(rock?.type).toBe('rock')
+    expect(rock?.craftingStartedTick).toBe(state.tick)
+    expect(rock?.craftingUntilTick).toBe(state.tick + 60)
+    expect(state.entities.some((entity) => entity.type === 'stone')).toBe(false)
+
+    // Not due yet, one tick short of the mining cost (60 ticks — entities.ts's ACTION_COSTS).
+    state.tick += 59
+    stepHarvests(state)
+    expect(getEntity(state, rockId)?.type).toBe('rock')
+    expect(state.entities.some((entity) => entity.type === 'stone')).toBe(false)
+
+    // Due now.
+    state.tick += 1
+    stepHarvests(state)
+    expect(getEntity(state, rockId)).toBeUndefined()
+    const stone = state.entities.find((entity) => entity.type === 'stone')
     expect(stone?.pos).toEqual({ x: 2, y: 1 })
+  })
+
+  it('rejects USE on a tree/rock that is already mid-harvest, rather than restarting its timer', () => {
+    const state = createWorld(5, 5, 1)
+    const playerId = addPlayer(state, 1, 1)
+    const rockId = addRock(state, 2, 1)
+    executeAction(state, playerId, { op: 'USE', target: rockId })
+    const rock = getEntity(state, rockId)
+    if (rock === undefined) {
+      throw new Error('rock missing')
+    }
+    const craftingUntilTick = rock.craftingUntilTick
+    // Free the actor up without touching the rock's own timer, so a second USE isn't rejected
+    // merely for the actor still being busy.
+    const player = getEntity(state, playerId)
+    if (player === undefined) {
+      throw new Error('player missing')
+    }
+    player.busyUntilTick = state.tick
+
+    const result = executeAction(state, playerId, { op: 'USE', target: rockId })
+
+    expect(result).toEqual({ ok: false, reason: 'already being harvested' })
+    expect(rock.craftingUntilTick).toBe(craftingUntilTick)
   })
 
   it('rejects mining a stone deposit without a pickaxe held', () => {
@@ -120,12 +162,16 @@ describe('executeAction', () => {
     expect(getEntity(state, depositId)?.type).toBe('stoneDeposit')
   })
 
-  it('sometimes drops a sapling alongside the log when chopping a tree', () => {
+  it('sometimes drops a sapling alongside the log once the chop completes', () => {
+    // The sapling roll happens when stepHarvests completes the chop, not when USE commits — but
+    // nothing else draws from state.rng in between, so it's still the seed's first draw either way.
     // Seed 7's first rng draw (~0.012) lands under SAPLING_DROP_CHANCE.
     const dropState = createWorld(5, 5, 7)
     const dropPlayerId = addPlayer(dropState, 1, 1)
     const dropTreeId = addTree(dropState, 2, 1)
     executeAction(dropState, dropPlayerId, { op: 'USE', target: dropTreeId })
+    dropState.tick += 40
+    stepHarvests(dropState)
     expect(dropState.entities.some((entity) => entity.type === 'sapling')).toBe(true)
 
     // Seed 4's first rng draw (~0.924) lands over SAPLING_DROP_CHANCE.
@@ -133,6 +179,8 @@ describe('executeAction', () => {
     const noDropPlayerId = addPlayer(noDropState, 1, 1)
     const noDropTreeId = addTree(noDropState, 2, 1)
     executeAction(noDropState, noDropPlayerId, { op: 'USE', target: noDropTreeId })
+    noDropState.tick += 40
+    stepHarvests(noDropState)
     expect(noDropState.entities.some((entity) => entity.type === 'sapling')).toBe(false)
   })
 
@@ -160,6 +208,7 @@ describe('executeAction', () => {
     expect(result.ok).toBe(true)
     const seedling = state.entities.find((entity) => entity.id === result.producedEntityId)
     expect(seedling?.type).toBe('seedling')
+    expect(seedling?.craftingStartedTick).toBe(state.tick)
     expect(seedling?.craftingUntilTick).toBe(state.tick + WHEAT_GROW_TICKS)
   })
 
@@ -405,6 +454,7 @@ describe('executeAction', () => {
 
       expect(result.ok).toBe(true)
       expect(player.held).toBeNull()
+      expect(getEntity(state, benchSawId)?.craftingStartedTick).toBe(state.tick)
       expect(getEntity(state, benchSawId)?.craftingUntilTick).toBe(state.tick + PLANK_RECIPE.ticks)
       expect(getEntity(state, benchSawId)?.craftingOutput).toBe('plank')
     })
@@ -427,6 +477,7 @@ describe('executeAction', () => {
 
       expect(result.ok).toBe(true)
       expect(player.held).toBeNull()
+      expect(getEntity(state, benchSawId)?.craftingStartedTick).toBe(state.tick)
       expect(getEntity(state, benchSawId)?.craftingUntilTick).toBe(state.tick + pickaxeRecipe.ticks)
       expect(getEntity(state, benchSawId)?.craftingOutput).toBe('pickaxe')
     })
@@ -449,6 +500,7 @@ describe('executeAction', () => {
 
       expect(result.ok).toBe(true)
       expect(player.held).toBeNull()
+      expect(getEntity(state, millId)?.craftingStartedTick).toBe(state.tick)
       expect(getEntity(state, millId)?.craftingUntilTick).toBe(state.tick + flourRecipe.ticks)
       expect(getEntity(state, millId)?.craftingOutput).toBe('flour')
     })
@@ -578,6 +630,75 @@ describe('executeAction', () => {
     })
   })
 
+  describe('SET_BOT_PAUSED', () => {
+    it('pauses and resumes a bot', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+      const program: Program = { id: 'p', name: 'noop', version: 1, instructions: [] }
+      state.programs[program.id] = program
+      state.botRuntimes[botId] = createBotRuntime(program.id, program)
+
+      const paused = executeAction(state, botId, { op: 'SET_BOT_PAUSED', botId, paused: true })
+      expect(paused).toEqual({ ok: true })
+      expect(state.botRuntimes[botId]?.paused).toBe(true)
+
+      const resumed = executeAction(state, botId, { op: 'SET_BOT_PAUSED', botId, paused: false })
+      expect(resumed).toEqual({ ok: true })
+      expect(state.botRuntimes[botId]?.paused).toBe(false)
+    })
+
+    it('shifts a mid-action bot’s busyUntilTick forward by however long the pause lasted, preserving its remaining cooldown', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+      const program: Program = { id: 'p', name: 'noop', version: 1, instructions: [] }
+      state.programs[program.id] = program
+      state.botRuntimes[botId] = createBotRuntime(program.id, program)
+      const bot = getEntity(state, botId)
+      if (bot === undefined) {
+        throw new Error('bot missing')
+      }
+      // 40 ticks of cooldown left when the pause hits.
+      bot.busyUntilTick = state.tick + 40
+
+      executeAction(state, botId, { op: 'SET_BOT_PAUSED', botId, paused: true })
+      // state.tick keeps advancing globally even while this one bot is paused.
+      state.tick += 1000
+      executeAction(state, botId, { op: 'SET_BOT_PAUSED', botId, paused: false })
+
+      // The 40 remaining ticks at the moment of pause must still be owed after resuming, not
+      // instantly satisfied by the 1000 ticks that passed while paused.
+      expect(bot.busyUntilTick).toBe(state.tick + 40)
+    })
+
+    it('leaves busyUntilTick alone when the bot was not actually mid-cooldown at the moment it paused', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+      const program: Program = { id: 'p', name: 'noop', version: 1, instructions: [] }
+      state.programs[program.id] = program
+      state.botRuntimes[botId] = createBotRuntime(program.id, program)
+      const bot = getEntity(state, botId)
+      if (bot === undefined) {
+        throw new Error('bot missing')
+      }
+      bot.busyUntilTick = state.tick
+
+      executeAction(state, botId, { op: 'SET_BOT_PAUSED', botId, paused: true })
+      state.tick += 1000
+      executeAction(state, botId, { op: 'SET_BOT_PAUSED', botId, paused: false })
+
+      expect(bot.busyUntilTick).toBe(0)
+    })
+
+    it('rejects pausing a bot with no program assigned', () => {
+      const state = createWorld(5, 5, 1)
+      const botId = addBot(state, 0, 0)
+
+      const result = executeAction(state, botId, { op: 'SET_BOT_PAUSED', botId, paused: true })
+
+      expect(result).toEqual({ ok: false, reason: 'bot has no program assigned' })
+    })
+  })
+
   describe('TAKE_FROM', () => {
     it('takes an item out of a stockpile', () => {
       const state = createWorld(5, 5, 1)
@@ -681,6 +802,22 @@ describe('executeAction', () => {
       expect(built?.type).toBe('blueprint')
       expect(built?.blueprintOf).toBe('mill')
       expect(built?.storage).toEqual({})
+    })
+
+    it('places a bot blueprint on an empty adjacent tile', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+
+      const result = executeAction(state, playerId, { op: 'BUILD', kind: 'bot', target: { x: 2, y: 1 } })
+
+      expect(result.ok).toBe(true)
+      const built = getEntity(state, result.producedEntityId ?? -1)
+      expect(built?.type).toBe('blueprint')
+      expect(built?.blueprintOf).toBe('bot')
+      expect(built?.storage).toEqual({})
+      // No runtime yet — a bot blueprint only becomes a real, running bot once stepBlueprints
+      // sees its storage cover BUILDING_COSTS.bot (see machines.test.ts).
+      expect(state.botRuntimes[result.producedEntityId ?? -1]).toBeUndefined()
     })
 
     it('a fully-delivered blueprint becomes its finished building once stepBlueprints runs', () => {
@@ -846,6 +983,8 @@ describe('executeAction', () => {
         currentAction: null,
         status: 'running',
         failurePolicy: 'wait',
+        paused: false,
+        pausedAtTick: null,
         lastResult: null,
         blockedRetryAt: 0,
       }

@@ -122,4 +122,16 @@ describe('describeEntity', () => {
 
     expect(describeEntity(state, tree)).toEqual(['Tree'])
   })
+
+  it('shows a tree\'s chopping countdown while it is mid-harvest', () => {
+    const state = createWorld(5, 5, 1)
+    const treeId = addTree(state, 1, 1)
+    const tree = getEntity(state, treeId)
+    if (tree === undefined) {
+      throw new Error('tree missing')
+    }
+    tree.craftingUntilTick = state.tick + 40
+
+    expect(describeEntity(state, tree)).toEqual(['Tree', 'Chopping (40 ticks left)'])
+  })
 })

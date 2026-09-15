@@ -69,6 +69,7 @@ describe('plant', () => {
     const youngTree = state.entities.find((entity) => entity.id === result.producedEntityId)
     expect(youngTree?.type).toBe('youngTree')
     expect(youngTree?.pos).toEqual({ x: 2, y: 1 })
+    expect(youngTree?.craftingStartedTick).toBe(state.tick)
     expect(youngTree?.craftingUntilTick).toBe(state.tick + TREE_GROW_TICKS)
   })
 })

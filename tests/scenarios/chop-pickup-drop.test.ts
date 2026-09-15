@@ -19,17 +19,11 @@ describe('chop, pick up and drop scenario', () => {
     const playerId = 0
     const treeId = 1
 
-    // Chop the adjacent tree: it is replaced by a log on its own tile.
+    // Chop the adjacent tree: it stays put, mid-chop, until the cost elapses.
     const chopResult = executeAction(state, playerId, { op: 'USE', target: treeId })
     expect(chopResult.ok).toBe(true)
-    const logId = chopResult.producedEntityId
-    if (logId === undefined) {
-      throw new Error('expected chop to produce a log entity')
-    }
-    expect(state.entities.find((entity) => entity.id === treeId)).toBeUndefined()
-    const logAfterChop = state.entities.find((entity) => entity.id === logId)
-    expect(logAfterChop?.type).toBe('log')
-    expect(logAfterChop?.pos).toEqual({ x: 3, y: 2 })
+    expect(chopResult.producedTile).toEqual({ x: 3, y: 2 })
+    expect(state.entities.find((entity) => entity.id === treeId)?.type).toBe('tree')
 
     // The player is busy chopping and cannot start another action yet.
     expect(executeAction(state, playerId, { op: 'MOVE_TO', target: { x: 3, y: 2 } })).toEqual({
@@ -38,6 +32,15 @@ describe('chop, pick up and drop scenario', () => {
     })
 
     runTicks(state, 40)
+
+    // The tree is now a log, on the same tile.
+    expect(state.entities.find((entity) => entity.id === treeId)).toBeUndefined()
+    const log = state.entities.find((entity) => entity.type === 'log')
+    if (log === undefined) {
+      throw new Error('expected chop to produce a log entity')
+    }
+    expect(log.pos).toEqual({ x: 3, y: 2 })
+    const logId = log.id
 
     // Walk onto the log's tile.
     expect(executeAction(state, playerId, { op: 'MOVE_TO', target: { x: 3, y: 2 } }).ok).toBe(true)

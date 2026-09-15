@@ -1,5 +1,8 @@
+import { BOT_TIER_COSTS } from './botCosts'
+import { createBotRuntime } from './botRuntime'
 import type { EntityData } from './entities'
 import { staticEntity } from './entities'
+import { instantiateProgram } from './routines'
 import type { BuildableType, EntityType, ItemKind, SimState, TileRef } from './types'
 
 export interface Recipe {
@@ -49,15 +52,18 @@ export function recipesFor(type: EntityType): Partial<Record<ItemKind, Recipe>> 
 export const CONTAINER_CAPACITY = 50
 
 /** Materials a blueprint needs delivered before stepBlueprints completes it into the finished
- * building — buildings are no longer free to place, only free to plan. stockpile and benchSaw are
- * costed in raw log/stone (choppable/mineable with no machine at all), not plank/block, since
- * those are only ever produced BY a bench saw — costing the bench saw's own blueprint in them
- * would make it impossible to ever build the first one. mill can safely cost plank/block: by the
- * time a player wants a mill, a bench saw (and so a plank/block supply) already exists. */
+ * building (or, for `bot`, a freshly assigned Mk1 bot) — nothing here is free to place, only free
+ * to plan. stockpile and benchSaw are costed in raw log/stone (choppable/mineable with no machine
+ * at all), not plank/block, since those are only ever produced BY a bench saw — costing the bench
+ * saw's own blueprint in them would make it impossible to ever build the first one. mill and bot
+ * can safely cost plank/block/flour: by the time a player wants either, a bench saw (and so a
+ * plank/block supply) already exists. bot reuses BOT_TIER_COSTS.mk1 so the two costs never drift
+ * apart — upgrading a tier and building the bot in the first place stay quoted the same way. */
 export const BUILDING_COSTS: Record<BuildableType, Partial<Record<ItemKind, number>>> = {
   stockpile: { log: 2 },
   benchSaw: { log: 2, stone: 2 },
   mill: { plank: 4, block: 1 },
+  bot: BOT_TIER_COSTS.mk1,
 }
 
 export function totalStored(storage: Partial<Record<ItemKind, number>>): number {
@@ -84,8 +90,9 @@ export function createMill(pos: TileRef): EntityData {
   return { ...staticEntity('mill', pos), storage: {} }
 }
 
-/** A planned building, placed by BUILD: occupies its tile like the finished building would, but
- * starts empty and only becomes `kind` once stepBlueprints sees its storage cover BUILDING_COSTS. */
+/** A planned building or bot, placed by BUILD: occupies its tile like the finished thing would,
+ * but starts empty and only becomes `kind` once stepBlueprints sees its storage cover
+ * BUILDING_COSTS. */
 export function createBlueprint(kind: BuildableType, pos: TileRef): EntityData {
   return { ...staticEntity('blueprint', pos), storage: {}, blueprintOf: kind }
 }
@@ -93,10 +100,19 @@ export function createBlueprint(kind: BuildableType, pos: TileRef): EntityData {
 /** Finishes any machine whose recipe time has elapsed, moving its recorded output into its store.
  * Generic over every machine type — the specific recipe was already resolved and stashed in
  * craftingOutput when the craft began (see actions.ts's giveTo), so this needs no recipe lookup of
- * its own. `state.entities` is always already in ascending id order, so no sort is needed here —
- * this runs every tick, for every entity. */
+ * its own. Restricted to actual machines (recipesFor(type) !== null) — several other entity types
+ * (a growing seedling/young tree, a mid-chop tree/rock) reuse the same craftingUntilTick field for
+ * their own unrelated timers, and would have theirs silently cleared here (with no storage to
+ * deposit into) if this ever ran unfiltered; those systems currently avoid the collision by never
+ * setting craftingOutput, but filtering by type here too is a cheap, explicit belt-and-braces,
+ * matching how stepCrops/stepTreeGrowth already restrict themselves to their own entity type.
+ * `state.entities` is always already in ascending id order, so no sort is needed here — this runs
+ * every tick, for every entity. */
 export function stepMachines(state: SimState): void {
   for (const entity of state.entities) {
+    if (recipesFor(entity.type) === null) {
+      continue
+    }
     if (entity.craftingUntilTick === null || entity.craftingOutput === null) {
       continue
     }
@@ -106,6 +122,7 @@ export function stepMachines(state: SimState): void {
     const output = entity.craftingOutput
     entity.craftingUntilTick = null
     entity.craftingOutput = null
+    entity.craftingStartedTick = null
     if (entity.storage !== null) {
       entity.storage[output] = (entity.storage[output] ?? 0) + 1
     }
@@ -113,8 +130,11 @@ export function stepMachines(state: SimState): void {
 }
 
 /** Completes any blueprint whose delivered storage now covers its full BUILDING_COSTS, turning it
- * into the finished building in place — same id, same position, empty storage. `state.entities` is
- * always already in ascending id order, so no sort is needed here. */
+ * into the finished building (or bot) in place — same id, same position, empty storage. A `bot`
+ * blueprint additionally gets a fresh, empty Mk1 program and runtime, exactly like the free
+ * starter bot (see main.ts) — the player teaches it a job afterwards via the script editor's own
+ * Record button. `state.entities` is always already in ascending id order, so no sort is needed
+ * here. */
 export function stepBlueprints(state: SimState): void {
   for (const entity of state.entities) {
     const kind = entity.blueprintOf
@@ -126,6 +146,12 @@ export function stepBlueprints(state: SimState): void {
     const delivered = (Object.entries(cost) as [ItemKind, number][]).every(([item, count]) => (storage[item] ?? 0) >= count)
     if (!delivered) {
       continue
+    }
+    if (kind === 'bot') {
+      const programId = `bot-${entity.id}`
+      const program = instantiateProgram(programId, `Bot ${entity.id}`, [])
+      state.programs[programId] = program
+      state.botRuntimes[entity.id] = createBotRuntime(programId, program)
     }
     entity.type = kind
     entity.blueprintOf = null

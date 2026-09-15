@@ -213,6 +213,51 @@ describe('recorder', () => {
     expect(moveTo === undefined ? undefined : targetTypes[moveTo.id]).toBeUndefined()
   })
 
+  it('fires onCapture synchronously with each committed instruction, in order, as it is recorded', () => {
+    const state = createWorld(10, 10, 1)
+    const playerId = addPlayer(state, 0, 0)
+    const recorder = createRecorder()
+    const captured: string[] = []
+    recorder.start((instruction) => captured.push(instruction.op))
+
+    recorder.perform(state, playerId, { op: 'MOVE_TO', target: { x: 1, y: 0 } })
+    // onCapture must have already fired by the time perform() returns — a caller writing this
+    // straight onto a bot's live program needs it available immediately, not on some later tick.
+    expect(captured).toEqual(['MOVE_TO'])
+
+    tickUntil(state, () => isIdle(state, playerId))
+    recorder.perform(state, playerId, { op: 'MOVE_TO', target: { x: 2, y: 0 } })
+    expect(captured).toEqual(['MOVE_TO', 'MOVE_TO'])
+  })
+
+  it('does not fire onCapture for a failed action', () => {
+    const state = createWorld(10, 10, 1)
+    const playerId = addPlayer(state, 0, 0)
+    const recorder = createRecorder()
+    const captured: string[] = []
+    recorder.start((instruction) => captured.push(instruction.op))
+
+    recorder.perform(state, playerId, { op: 'PICK_UP', target: 999 })
+
+    expect(captured).toEqual([])
+  })
+
+  it('stops calling the previous session’s onCapture once a fresh start() supplies a new one (or none)', () => {
+    const state = createWorld(10, 10, 1)
+    const playerId = addPlayer(state, 0, 0)
+    const recorder = createRecorder()
+    const firstSession: string[] = []
+    recorder.start((instruction) => firstSession.push(instruction.op))
+    recorder.perform(state, playerId, { op: 'MOVE_TO', target: { x: 1, y: 0 } })
+    recorder.stop()
+
+    // No onCapture this time — must not crash, and must not still be calling the old one.
+    recorder.start()
+    recorder.perform(state, playerId, { op: 'MOVE_TO', target: { x: 2, y: 0 } })
+
+    expect(firstSession).toEqual(['MOVE_TO'])
+  })
+
   it('resets lastTargetTypes on a fresh start()', () => {
     const state = createWorld(10, 10, 1)
     const playerId = addPlayer(state, 0, 0)

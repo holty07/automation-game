@@ -42,9 +42,14 @@ function stepEntity(state: SimState, entity: Entity): void {
 
 /** Advances every entity one movement tick towards its move target, in stable id order.
  * `state.entities` is always already in ascending id order (addEntity appends, removeEntity
- * filters), so no sort is needed here — this runs every tick, for every entity. */
+ * filters), so no sort is needed here — this runs every tick, for every entity. A paused bot is
+ * skipped entirely, so it freezes exactly where it stands rather than sliding on to wherever it
+ * was already walking. */
 export function stepMovement(state: SimState): void {
   for (const entity of state.entities) {
+    if (entity.type === 'bot' && state.botRuntimes[entity.id]?.paused === true) {
+      continue
+    }
     stepEntity(state, entity)
   }
 }
