@@ -1,8 +1,8 @@
 import { assignRoutine, copyProgram, editProgram, saveRoutine, setBotPaused, setBotTier, setFailurePolicy, upgradeBotTier } from './botControl'
 import { hasStockedCost, BOT_TIER_COSTS, deductStockedCost } from './botCosts'
 import { createBotRuntime, type FailurePolicy } from './botRuntime'
-import { createGroundItem, getActionCost, isItemKind, staticEntity } from './entities'
-import { BUILDING_COSTS, CONTAINER_CAPACITY, createBlueprint, lockedStockpileItem, recipesFor, totalStored } from './machines'
+import { createGroundItem, getActionCost, GROUND_OCCUPIED, isItemKind, staticEntity } from './entities'
+import { BUILDING_COSTS, capacityFor, createBlueprint, lockedStockpileItem, recipesFor, totalStored } from './machines'
 import { plant } from './planting'
 import type { BotTier, Instruction, Program } from './program'
 import type { BuildableType, Entity, EntityId, ItemKind, SimState, TileRef } from './types'
@@ -103,6 +103,9 @@ function drop(state: SimState, actor: Entity, target: TileRef): ActionResult {
   if (target.x !== actor.pos.x || target.y !== actor.pos.y) {
     return fail('can only drop at your own feet')
   }
+  if (entitiesAt(state, target.x, target.y).some((entity) => isItemKind(entity.type))) {
+    return fail(GROUND_OCCUPIED)
+  }
 
   const heldKind = actor.held
   const cost = getActionCost('DROP', heldKind)
@@ -124,7 +127,7 @@ function giveTo(state: SimState, actor: Entity, targetId: EntityId): ActionResul
     return fail('target is out of reach')
   }
 
-  if (totalStored(target.storage) >= CONTAINER_CAPACITY) {
+  if (totalStored(target.storage) >= capacityFor(target.type)) {
     return fail('container is full')
   }
 

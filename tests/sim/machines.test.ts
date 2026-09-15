@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { addBenchSaw, addEntity, addMill, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
+import { addBenchSaw, addEntity, addMill, addStockpile, addStoneCutter, addTree, createWorld, getEntity } from '../../src/sim/world'
 import {
   BENCH_SAW_RECIPES,
   BUILDING_COSTS,
+  CONTAINER_CAPACITY,
   MILL_RECIPES,
+  STOCKPILE_CAPACITY,
+  STONE_CUTTER_RECIPES,
+  capacityFor,
   createBlueprint,
   lockedStockpileItem,
   recipesFor,
@@ -13,7 +17,8 @@ import {
 
 const PLANK_RECIPE = BENCH_SAW_RECIPES.log
 const FLOUR_RECIPE = MILL_RECIPES.grain
-if (PLANK_RECIPE === undefined || FLOUR_RECIPE === undefined) {
+const BLOCK_RECIPE = STONE_CUTTER_RECIPES.stone
+if (PLANK_RECIPE === undefined || FLOUR_RECIPE === undefined || BLOCK_RECIPE === undefined) {
   throw new Error('expected recipes missing')
 }
 
@@ -50,6 +55,16 @@ describe('machines', () => {
     expect(benchSaw?.type).toBe('benchSaw')
     expect(benchSaw?.storage).toEqual({})
     expect(benchSaw?.craftingUntilTick).toBeNull()
+  })
+
+  it('creates a stone cutter idle and with an empty store', () => {
+    const state = createWorld(5, 5, 1)
+    const stoneCutterId = addStoneCutter(state, 1, 1)
+
+    const stoneCutter = getEntity(state, stoneCutterId)
+    expect(stoneCutter?.type).toBe('stoneCutter')
+    expect(stoneCutter?.storage).toEqual({})
+    expect(stoneCutter?.craftingUntilTick).toBeNull()
   })
 
   it('creates a mill idle and with an empty store', () => {
@@ -113,6 +128,28 @@ describe('machines', () => {
     expect(benchSaw.storage).toEqual({ plank: 1 })
   })
 
+  it('produces a block from a cutting stone cutter once its recipe time elapses', () => {
+    const state = createWorld(5, 5, 1)
+    const stoneCutterId = addStoneCutter(state, 1, 1)
+    const stoneCutter = getEntity(state, stoneCutterId)
+    if (stoneCutter === undefined) {
+      throw new Error('stone cutter missing')
+    }
+    stoneCutter.craftingStartedTick = state.tick
+    stoneCutter.craftingUntilTick = state.tick + BLOCK_RECIPE.ticks
+    stoneCutter.craftingOutput = BLOCK_RECIPE.output
+
+    for (let i = 0; i < BLOCK_RECIPE.ticks; i += 1) {
+      state.tick += 1
+      stepMachines(state)
+    }
+
+    expect(stoneCutter.craftingStartedTick).toBeNull()
+    expect(stoneCutter.craftingUntilTick).toBeNull()
+    expect(stoneCutter.craftingOutput).toBeNull()
+    expect(stoneCutter.storage).toEqual({ block: 1 })
+  })
+
   it('produces flour from a milling mill once its recipe time elapses', () => {
     const state = createWorld(5, 5, 1)
     const millId = addMill(state, 1, 1)
@@ -173,6 +210,10 @@ describe('recipesFor', () => {
     expect(recipesFor('benchSaw')).toBe(BENCH_SAW_RECIPES)
   })
 
+  it('returns the stone cutter recipe table for a stone cutter', () => {
+    expect(recipesFor('stoneCutter')).toBe(STONE_CUTTER_RECIPES)
+  })
+
   it('returns the mill recipe table for a mill', () => {
     expect(recipesFor('mill')).toBe(MILL_RECIPES)
   })
@@ -180,6 +221,30 @@ describe('recipesFor', () => {
   it('returns null for anything that is not a machine', () => {
     expect(recipesFor('stockpile')).toBeNull()
     expect(recipesFor('tree')).toBeNull()
+  })
+})
+
+describe('BENCH_SAW_RECIPES / STONE_CUTTER_RECIPES', () => {
+  it('the bench saw no longer turns stone into blocks -- that moved to the stone cutter', () => {
+    expect(BENCH_SAW_RECIPES.stone).toBeUndefined()
+    expect(STONE_CUTTER_RECIPES.stone?.output).toBe('block')
+  })
+})
+
+describe('capacityFor', () => {
+  it('gives a stockpile the larger capacity', () => {
+    expect(capacityFor('stockpile')).toBe(STOCKPILE_CAPACITY)
+  })
+
+  it('gives every other storage-bearing type the smaller, generic capacity', () => {
+    expect(capacityFor('benchSaw')).toBe(CONTAINER_CAPACITY)
+    expect(capacityFor('stoneCutter')).toBe(CONTAINER_CAPACITY)
+    expect(capacityFor('mill')).toBe(CONTAINER_CAPACITY)
+    expect(capacityFor('blueprint')).toBe(CONTAINER_CAPACITY)
+  })
+
+  it('the stockpile capacity is larger than the generic one', () => {
+    expect(STOCKPILE_CAPACITY).toBeGreaterThan(CONTAINER_CAPACITY)
   })
 })
 
@@ -238,6 +303,23 @@ describe('blueprints', () => {
     expect(finished?.blueprintOf).toBeNull()
     expect(finished?.storage).toEqual({})
     expect(finished?.pos).toEqual({ x: 2, y: 3 })
+  })
+
+  it('converts a fully-stocked stone cutter blueprint into a finished stone cutter', () => {
+    const state = createWorld(5, 5, 1)
+    const blueprintId = addEntity(state, createBlueprint('stoneCutter', { x: 2, y: 3 }))
+    const blueprint = getEntity(state, blueprintId)
+    if (blueprint === undefined) {
+      throw new Error('blueprint missing')
+    }
+    blueprint.storage = { ...BUILDING_COSTS.stoneCutter }
+
+    stepBlueprints(state)
+
+    const finished = getEntity(state, blueprintId)
+    expect(finished?.type).toBe('stoneCutter')
+    expect(finished?.blueprintOf).toBeNull()
+    expect(finished?.storage).toEqual({})
   })
 
   it('converts once storage meets or exceeds every required item, not just equals it', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateCondition } from '../../src/sim/conditions'
-import { CONTAINER_CAPACITY } from '../../src/sim/machines'
-import { addBot, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
+import { CONTAINER_CAPACITY, STOCKPILE_CAPACITY } from '../../src/sim/machines'
+import { addBenchSaw, addBot, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
 
 describe('evaluateCondition', () => {
   it('HOLDING is true only when the actor holds that exact item', () => {
@@ -76,7 +76,24 @@ describe('evaluateCondition', () => {
 
     expect(evaluateCondition(state, botId, { type: 'CONTAINER_FULL', container }, null)).toBe(false)
 
-    stockpile.storage = { log: CONTAINER_CAPACITY }
+    stockpile.storage = { log: STOCKPILE_CAPACITY }
+    expect(evaluateCondition(state, botId, { type: 'CONTAINER_FULL', container }, null)).toBe(true)
+  })
+
+  it('CONTAINER_FULL uses a machine\'s smaller cap, not a stockpile\'s', () => {
+    const state = createWorld(5, 5, 1)
+    const botId = addBot(state, 0, 0)
+    const benchSawId = addBenchSaw(state, 2, 0)
+    const benchSaw = getEntity(state, benchSawId)
+    if (benchSaw === undefined) {
+      throw new Error('bench saw missing')
+    }
+    const container = { mode: 'nearestOf', entityType: 'benchSaw' } as const
+
+    benchSaw.storage = { plank: CONTAINER_CAPACITY - 1 }
+    expect(evaluateCondition(state, botId, { type: 'CONTAINER_FULL', container }, null)).toBe(false)
+
+    benchSaw.storage = { plank: CONTAINER_CAPACITY }
     expect(evaluateCondition(state, botId, { type: 'CONTAINER_FULL', container }, null)).toBe(true)
   })
 

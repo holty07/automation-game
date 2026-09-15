@@ -3,7 +3,7 @@ import { executeAction } from '../../src/sim/actions'
 import { createSoil, WHEAT_GROW_TICKS } from '../../src/sim/farming'
 import { tick } from '../../src/sim/tick'
 import type { EntityId, SimState } from '../../src/sim/types'
-import { addBenchSaw, addEntity, addMill, addPlayer, addRock, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
+import { addBenchSaw, addEntity, addMill, addPlayer, addRock, addStockpile, addStoneCutter, addTree, createWorld, getEntity } from '../../src/sim/world'
 import { textDump } from '../../src/debug/textDump'
 
 function runTicks(state: SimState, count: number): void {
@@ -34,10 +34,11 @@ describe('farm to first bot', () => {
     const playerId = addPlayer(state, 5, 5)
     const player = requireEntity(state, playerId)
     const benchSawId = addBenchSaw(state, 0, 0)
-    const millId = addMill(state, 0, 1)
-    const plankStockpileId = addStockpile(state, 0, 2)
-    const blockStockpileId = addStockpile(state, 0, 3)
-    const flourStockpileId = addStockpile(state, 0, 4)
+    const stoneCutterId = addStoneCutter(state, 0, 1)
+    const millId = addMill(state, 0, 2)
+    const plankStockpileId = addStockpile(state, 0, 3)
+    const blockStockpileId = addStockpile(state, 0, 4)
+    const flourStockpileId = addStockpile(state, 0, 5)
 
     // Deploying now must fail — nothing is stocked yet.
     const tooEarly = executeAction(state, playerId, {
@@ -62,7 +63,7 @@ describe('farm to first bot', () => {
     runTicks(state, 200)
     expect(requireEntity(state, benchSawId).storage).toEqual({ plank: 1 })
 
-    // Mine a rock for stone, feed it to the bench saw for a block.
+    // Mine a rock for stone, feed it to the stone cutter for a block.
     const rockId = addRock(state, 6, 5)
     player.pos = { x: 5, y: 5 }
     expect(executeAction(state, playerId, { op: 'USE', target: rockId }).ok).toBe(true)
@@ -74,10 +75,11 @@ describe('farm to first bot', () => {
     player.pos = { ...stone.pos }
     expect(executeAction(state, playerId, { op: 'PICK_UP', target: stone.id }).ok).toBe(true)
     runTicks(state, 20)
-    player.pos = { x: 1, y: 0 }
-    expect(executeAction(state, playerId, { op: 'GIVE_TO', target: benchSawId }).ok).toBe(true)
+    player.pos = { x: 1, y: 1 } // adjacent to the stone cutter
+    expect(executeAction(state, playerId, { op: 'GIVE_TO', target: stoneCutterId }).ok).toBe(true)
     runTicks(state, 200)
-    expect(requireEntity(state, benchSawId).storage).toEqual({ plank: 1, block: 1 })
+    expect(requireEntity(state, benchSawId).storage).toEqual({ plank: 1 })
+    expect(requireEntity(state, stoneCutterId).storage).toEqual({ block: 1 })
 
     // Till, sow, wait for the crop to grow, harvest, mill the grain into flour.
     const soilId = addEntity(state, createSoil({ x: 6, y: 5 }))
@@ -106,7 +108,7 @@ describe('farm to first bot', () => {
     player.pos = { ...grain.pos }
     expect(executeAction(state, playerId, { op: 'PICK_UP', target: grain.id }).ok).toBe(true)
     runTicks(state, 20)
-    player.pos = { x: 1, y: 1 } // adjacent to the mill
+    player.pos = { x: 1, y: 2 } // adjacent to the mill
     expect(executeAction(state, playerId, { op: 'GIVE_TO', target: millId }).ok).toBe(true)
     runTicks(state, 100)
     expect(requireEntity(state, millId).storage).toEqual({ flour: 1 })
@@ -116,19 +118,19 @@ describe('farm to first bot', () => {
     player.pos = { x: 1, y: 0 }
     expect(executeAction(state, playerId, { op: 'TAKE_FROM', target: benchSawId, item: 'plank' }).ok).toBe(true)
     runTicks(state, 20)
-    player.pos = { x: 1, y: 2 } // adjacent to the plank stockpile
+    player.pos = { x: 1, y: 3 } // adjacent to the plank stockpile
     expect(executeAction(state, playerId, { op: 'GIVE_TO', target: plankStockpileId }).ok).toBe(true)
     runTicks(state, 20)
-    player.pos = { x: 1, y: 0 }
-    expect(executeAction(state, playerId, { op: 'TAKE_FROM', target: benchSawId, item: 'block' }).ok).toBe(true)
+    player.pos = { x: 1, y: 1 }
+    expect(executeAction(state, playerId, { op: 'TAKE_FROM', target: stoneCutterId, item: 'block' }).ok).toBe(true)
     runTicks(state, 20)
-    player.pos = { x: 1, y: 3 } // adjacent to the block stockpile
+    player.pos = { x: 1, y: 4 } // adjacent to the block stockpile
     expect(executeAction(state, playerId, { op: 'GIVE_TO', target: blockStockpileId }).ok).toBe(true)
     runTicks(state, 20)
-    player.pos = { x: 1, y: 1 }
+    player.pos = { x: 1, y: 2 }
     expect(executeAction(state, playerId, { op: 'TAKE_FROM', target: millId, item: 'flour' }).ok).toBe(true)
     runTicks(state, 20)
-    player.pos = { x: 1, y: 4 } // adjacent to the flour stockpile
+    player.pos = { x: 1, y: 5 } // adjacent to the flour stockpile
     expect(executeAction(state, playerId, { op: 'GIVE_TO', target: flourStockpileId }).ok).toBe(true)
     runTicks(state, 20)
     expect(requireEntity(state, plankStockpileId).storage).toEqual({ plank: 1 })

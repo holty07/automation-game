@@ -13,13 +13,14 @@ interface BuildCategory {
  * category — rather than folding its one choice into Buildings — since more bot kinds/tiers are
  * expected to land here later. */
 const CATEGORIES: readonly BuildCategory[] = [
-  { key: 'buildings', label: 'Buildings', choices: ['stockpile', 'benchSaw', 'mill'] },
+  { key: 'buildings', label: 'Buildings', choices: ['stockpile', 'benchSaw', 'stoneCutter', 'mill'] },
   { key: 'bots', label: 'Bots', choices: ['bot'] },
 ]
 
 const BUILD_LABELS: Record<BuildableType, string> = {
   stockpile: 'Stockpile',
   benchSaw: 'Bench Saw',
+  stoneCutter: 'Stone Cutter',
   mill: 'Mill',
   bot: 'Bot',
 }
