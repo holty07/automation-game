@@ -3,6 +3,7 @@ import type { BotRuntime, FailurePolicy } from './botRuntime'
 import type { BotTier, Instruction, Program } from './program'
 import { createRoutine, instantiateProgram } from './routines'
 import type { EntityId, SimState } from './types'
+import { getEntity } from './world'
 
 /** Editor edits to a bot's program, tier, failure policy or routine assignment — never a timed
  * actor action, so each of these must work even while the bot is mid-action. Split out of
@@ -51,6 +52,35 @@ export function setFailurePolicy(state: SimState, botId: EntityId, policy: Failu
     return fail('bot has no program assigned')
   }
   runtime.failurePolicy = policy
+  return { ok: true }
+}
+
+/** Pauses or resumes a bot in place — while paused, stepBots and stepMovement both skip it
+ * entirely, so it freezes exactly where it stands (mid-walk or mid-action) until resumed.
+ * state.tick itself never stops just because one bot is paused, so a mid-action pause additionally
+ * shifts the actor's busyUntilTick forward by however long the pause lasted, on resume — otherwise
+ * a timed action's remaining cooldown would silently evaporate while paused, finishing the instant
+ * it resumes instead of after its real remaining duration. */
+export function setBotPaused(state: SimState, botId: EntityId, paused: boolean): EditResult {
+  const runtime = state.botRuntimes[botId]
+  if (runtime === undefined) {
+    return fail('bot has no program assigned')
+  }
+  if (paused === runtime.paused) {
+    return { ok: true }
+  }
+  if (paused) {
+    runtime.paused = true
+    runtime.pausedAtTick = state.tick
+    return { ok: true }
+  }
+  runtime.paused = false
+  const pausedAtTick = runtime.pausedAtTick
+  runtime.pausedAtTick = null
+  const actor = pausedAtTick === null ? undefined : getEntity(state, botId)
+  if (actor !== undefined && pausedAtTick !== null && actor.busyUntilTick > pausedAtTick) {
+    actor.busyUntilTick += state.tick - pausedAtTick
+  }
   return { ok: true }
 }
 

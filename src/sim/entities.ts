@@ -84,6 +84,7 @@ const ACTION_COSTS: Record<string, number> = {
   'BUILD:stockpile': 20,
   'BUILD:benchSaw': 20,
   'BUILD:mill': 20,
+  'BUILD:bot': 20,
   'PLANT:sapling': 30,
 }
 
@@ -112,6 +113,7 @@ export function staticEntity(type: EntityType, pos: TileRef): EntityData {
     storage: null,
     craftingUntilTick: null,
     craftingOutput: null,
+    craftingStartedTick: null,
     blueprintOf: null,
   }
 }

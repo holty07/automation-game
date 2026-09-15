@@ -1,5 +1,6 @@
 import type { EntityId, ItemKind, SimState, TileRef } from '../sim/types'
-import type { ActionRequest } from '../sim/actions'
+import type { ActionRequest, BuildableType } from '../sim/actions'
+import { isActorBusy } from '../sim/actions'
 import { isItemKind, ITEM_KINDS } from '../sim/entities'
 import { findPathAdjacentTo } from '../sim/pathfind'
 import type { Recorder } from '../sim/recorder'
@@ -51,6 +52,18 @@ export function createControls(
   const pressed = new Set<string>()
   /** An action queued to fire once the player finishes walking to it (a click on a distant target). */
   let pendingIntent: ActionRequest | null = null
+  /** A click that arrived while the player was busy (mid-action cooldown, or already mid-walk from
+   * an earlier click) — resolved from update() the moment the player is free, exactly as if the
+   * click had just landed then. Without this, a click during a busy window (e.g. right after
+   * chopping a tree, while the swing's cooldown is still running) would resolve immediately,
+   * fail the busy check deep in executeAction, and be silently dropped — the player would have to
+   * notice nothing happened and click again. A later click while one is already pending replaces
+   * it outright: the same "last click wins" rule `approach()` already applies to `pendingIntent` —
+   * which is exactly why storing one here also clears any live `pendingIntent`: without that, a
+   * click landing mid-walk (busy via moveTarget, not a cooldown) would leave the *previous* click's
+   * queued follow-up action intact, and it would fire once the walk finishes — reviving a stale
+   * action the player had already clicked past, instead of redirecting to what they clicked next. */
+  let pendingClick: { tile: TileRef; pendingBuild: BuildableType | null } | null = null
 
   function onKeyDown(event: KeyboardEvent): void {
     if (event.code in DIRECTION_KEYS) {
@@ -79,24 +92,18 @@ export function createControls(
     pendingIntent = moveResult.ok ? intent : null
   }
 
-  function onClick(event: MouseEvent): void {
+  /** Everything a click actually does once the player is free to act on it — armed-build
+   * placement, opening a bot, container give/take, item pick-up, resource use, planting, dropping,
+   * or a plain walk. Runs either straight from onClick (player already free) or later from
+   * update() (the click arrived while busy and was deferred as pendingClick). `pendingBuild` is
+   * taken from the toolbar at the moment of the original click, not re-read here, so a deferred
+   * build placement still reflects what was actually armed when the player clicked. */
+  function resolveClick(tile: TileRef, pendingBuild: BuildableType | null): void {
     const player = getEntity(state, playerId)
     if (player === undefined) {
       return
     }
-    const rect = canvas.getBoundingClientRect()
-    const tile = screenToTile(
-      camera,
-      player.pos.x,
-      player.pos.y,
-      event.clientX - rect.left,
-      event.clientY - rect.top,
-    )
-    if (!inBounds(state, tile)) {
-      return
-    }
 
-    const pendingBuild = toolbar.takePendingBuild()
     if (pendingBuild !== null) {
       const path = findPathAdjacentTo(state, player.pos, tile)
       if (path === null) {
@@ -196,6 +203,35 @@ export function createControls(
     recorder.perform(state, playerId, { op: 'MOVE_TO', target: tile })
   }
 
+  function onClick(event: MouseEvent): void {
+    const player = getEntity(state, playerId)
+    if (player === undefined) {
+      return
+    }
+    const rect = canvas.getBoundingClientRect()
+    const tile = screenToTile(
+      camera,
+      player.pos.x,
+      player.pos.y,
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+    )
+    if (!inBounds(state, tile)) {
+      return
+    }
+
+    // Taken now, not at resolve time, so a build stays armed-then-consumed at the moment the
+    // player actually clicked, even if resolving it has to wait for them to stop being busy.
+    const pendingBuild = toolbar.takePendingBuild()
+
+    if (isActorBusy(state, player)) {
+      pendingIntent = null
+      pendingClick = { tile, pendingBuild }
+      return
+    }
+    resolveClick(tile, pendingBuild)
+  }
+
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
   canvas.addEventListener('click', onClick)
@@ -208,6 +244,15 @@ export function createControls(
           const intent = pendingIntent
           pendingIntent = null
           recorder.perform(state, playerId, intent)
+        }
+      }
+
+      if (pendingClick !== null) {
+        const player = getEntity(state, playerId)
+        if (player !== undefined && !isActorBusy(state, player)) {
+          const { tile, pendingBuild } = pendingClick
+          pendingClick = null
+          resolveClick(tile, pendingBuild)
         }
       }
 

@@ -56,6 +56,9 @@ export function textDump(state: SimState): string {
       if (entity.type === 'blueprint') {
         extra += ` blueprintOf=${entity.blueprintOf ?? '?'}`
       }
+      if ((entity.type === 'tree' || entity.type === 'rock') && entity.craftingUntilTick !== null) {
+        extra += ` harvest=until-tick-${entity.craftingUntilTick}`
+      }
       lines.push(
         `  ${index + 1}. id=${entity.id} type=${entity.type} pos=(${entity.pos.x},${entity.pos.y}) moveTarget=${moveTarget} held=${held}${extra}`,
       )
@@ -78,8 +81,9 @@ export function textDump(state: SimState): string {
       const programName = program === undefined ? runtime.programId : program.name
       const path = runtime.frames.map((frame) => frame.index).join('.')
       const blockedReason = runtime.blockedReason === undefined ? '' : ` blockedReason=${runtime.blockedReason}`
+      const paused = runtime.paused ? ' paused=true' : ''
       lines.push(
-        `  ${index + 1}. bot=${id} program=${programName} path=${path} status=${runtime.status}${blockedReason}`,
+        `  ${index + 1}. bot=${id} program=${programName} path=${path} status=${runtime.status}${blockedReason}${paused}`,
       )
     })
   }

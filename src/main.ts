@@ -1,6 +1,5 @@
-import { addBot, addGroundItem, addPlayer, addRock, addStockpile, addStoneDeposit, addTree, addEntity, createWorld, getEntity, setTile } from './sim/world'
+import { addBot, addGroundItem, addPlayer, addRock, addStoneDeposit, addTree, addEntity, createWorld, getEntity, setTile } from './sim/world'
 import type { EntityId } from './sim/types'
-import { BOT_TIER_COSTS } from './sim/botCosts'
 import { createSoil, createTilledSoil } from './sim/farming'
 import { instantiateProgram } from './sim/routines'
 import { createLoop } from './sim/tick'
@@ -18,16 +17,22 @@ import { createHoverInfo } from './ui/HoverInfo'
 
 declare global {
   interface Window {
-    /** Dev/e2e-test-only: stocks a stockpile beside the player with exactly the Mk1 bot cost, so
-     * Playwright specs can reach a deployed bot without simulating minutes of real gathering.
-     * Stripped from production builds — `import.meta.env.DEV` is statically false there, so Vite
-     * dead-code-eliminates the assignment entirely. */
-    __debugStockMk1?: () => void
+    /** Dev/e2e-test-only: spawns a second bot beside the player, empty program and all — same
+     * shortcut as the free starter bot below, for Playwright specs that need a second bot to
+     * exist without placing and materially stocking a bot blueprint from scratch. Stripped from
+     * production builds — `import.meta.env.DEV` is statically false there, so Vite dead-code-
+     * eliminates the assignment entirely. */
+    __debugBuildBot?: () => void
     /** Dev/e2e-test-only: drops a tilled-soil-plus-grain pair one tile right of the player, the
      * exact state a real harvest leaves behind — so a Playwright spec can check that clicking it
      * picks up the grain instead of re-sowing, without waiting out a real ~15s wheat-growth timer.
-     * Stripped from production builds, same as __debugStockMk1 above. */
+     * Stripped from production builds, same as __debugBuildBot above. */
     __debugSpawnHarvestedPatch?: () => void
+    /** Dev/e2e-test-only: plants a fresh, choppable tree one tile north of the player — so a
+     * Playwright spec can chop it and click again mid-cooldown without depending on wherever
+     * world generation happened to scatter a real one. Stripped from production builds, same as
+     * __debugBuildBot above. */
+    __debugSpawnTree?: () => void
   }
 }
 
@@ -74,8 +79,9 @@ scatter(STONE_DEPOSIT_COUNT, (x, y) => {
 })
 
 // One free bot to start with, right beside the player, empty program and all — click it to open
-// its script, then Record to teach it a job (see ScriptEditor.ts/Toolbar.ts), no materials or
-// DEPLOY_BOT cost required.
+// its script, then Record to teach it a job (see ScriptEditor.ts/Toolbar.ts). Every bot after this
+// one is built from a materials-costed blueprint instead (Toolbar's Build Bot button), same as any
+// other building — see machines.ts's stepBlueprints.
 // (One tile clear of (centre + 1, centre) — the tile the editor e2e spec's hardcoded click targets.)
 const starterProgram = instantiateProgram('starter-bot', 'Starter bot', [])
 state.programs[starterProgram.id] = starterProgram
@@ -83,19 +89,18 @@ const starterBotId = addBot(state, centre - 1, centre)
 state.botRuntimes[starterBotId] = createBotRuntime(starterProgram.id, starterProgram)
 
 if (import.meta.env.DEV) {
-  window.__debugStockMk1 = () => {
+  window.__debugBuildBot = () => {
     const player = getEntity(state, playerId)
     if (player === undefined) {
       return
     }
-    // Placed well clear of (player.x + 1, player.y) — the tile the editor e2e spec's hardcoded
-    // click targets — so stocking materials never turns that click into a TAKE_FROM instead of
-    // the plain MOVE_TO the test expects to record.
-    const stockpileId = addStockpile(state, player.pos.x - 3, player.pos.y)
-    const stockpile = getEntity(state, stockpileId)
-    if (stockpile !== undefined) {
-      stockpile.storage = { ...BOT_TIER_COSTS.mk1 }
-    }
+    // Two tiles clear of the player, clear of the starter bot at (centre - 1, centre) too.
+    const pos = { x: player.pos.x - 3, y: player.pos.y }
+    const botId = addBot(state, pos.x, pos.y)
+    const programId = `debug-bot-${botId}`
+    const program = instantiateProgram(programId, `Bot ${botId}`, [])
+    state.programs[programId] = program
+    state.botRuntimes[botId] = createBotRuntime(programId, program)
   }
 
   window.__debugSpawnHarvestedPatch = () => {
@@ -106,6 +111,14 @@ if (import.meta.env.DEV) {
     const pos = { x: player.pos.x + 1, y: player.pos.y }
     addEntity(state, createTilledSoil(pos))
     addGroundItem(state, 'grain', pos.x, pos.y)
+  }
+
+  window.__debugSpawnTree = () => {
+    const player = getEntity(state, playerId)
+    if (player === undefined) {
+      return
+    }
+    addTree(state, player.pos.x, player.pos.y - 1)
   }
 }
 

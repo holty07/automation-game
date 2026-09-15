@@ -63,6 +63,7 @@ export function plant(state: SimState, actor: Entity, target: TileRef): PlantRes
   const producedEntityId = addEntity(state, createYoungTree(target))
   const youngTree = getEntity(state, producedEntityId)
   if (youngTree !== undefined) {
+    youngTree.craftingStartedTick = state.tick
     youngTree.craftingUntilTick = state.tick + TREE_GROW_TICKS
   }
   actor.held = null

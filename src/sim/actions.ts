@@ -1,4 +1,4 @@
-import { assignRoutine, copyProgram, editProgram, saveRoutine, setBotTier, setFailurePolicy, upgradeBotTier } from './botControl'
+import { assignRoutine, copyProgram, editProgram, saveRoutine, setBotPaused, setBotTier, setFailurePolicy, upgradeBotTier } from './botControl'
 import { hasStockedCost, BOT_TIER_COSTS, deductStockedCost } from './botCosts'
 import { createBotRuntime, type FailurePolicy } from './botRuntime'
 import { createGroundItem, getActionCost, isItemKind, staticEntity } from './entities'
@@ -25,6 +25,7 @@ export type ActionRequest =
   | { op: 'DEPLOY_BOT'; program: Program }
   | { op: 'EDIT_PROGRAM'; botId: EntityId; instructions: Instruction[] }
   | { op: 'SET_FAILURE_POLICY'; botId: EntityId; policy: FailurePolicy }
+  | { op: 'SET_BOT_PAUSED'; botId: EntityId; paused: boolean }
   | { op: 'SET_BOT_TIER'; botId: EntityId; tier: BotTier }
   | { op: 'SAVE_ROUTINE'; botId: EntityId; routineId: string; name: string }
   | { op: 'ASSIGN_ROUTINE'; botId: EntityId; routineId: string; programId: string }
@@ -35,6 +36,12 @@ export interface ActionResult {
   ok: boolean
   reason?: string
   producedEntityId?: EntityId
+  /** Set instead of `producedEntityId` by an action whose effect is deferred (e.g. USE starting a
+   * chop/mine — see useVerb.ts's useResource) rather than immediate: nothing exists to reference by
+   * id yet, only the tile it'll appear on. vm.ts's `lastResult` falls back to a tile-kind binding
+   * here, which a later PICK_UP/MOVE_TO in the same recorded chain re-resolves against whatever is
+   * actually on that tile once it exists, instead of a stale, now-nonexistent entity id. */
+  producedTile?: TileRef
 }
 
 function fail(reason: string): ActionResult {
@@ -151,6 +158,7 @@ function giveTo(state: SimState, actor: Entity, targetId: EntityId): ActionResul
     const cost = getActionCost('GIVE_TO', heldKind)
     actor.held = null
     actor.busyUntilTick = state.tick + cost
+    target.craftingStartedTick = state.tick
     target.craftingUntilTick = state.tick + recipe.ticks
     target.craftingOutput = recipe.output
     return { ok: true }
@@ -234,9 +242,9 @@ function wait(state: SimState, actor: Entity, ticks: number): ActionResult {
  * (vm.ts writes directly to a bot's own entry in `SimState.botRuntimes` — that's VM-internal program
  * counter/call-stack bookkeeping, not world state, so it's exempt from this rule.)
  *
- * EDIT_PROGRAM, SET_FAILURE_POLICY, SET_BOT_TIER, SAVE_ROUTINE, ASSIGN_ROUTINE, COPY_PROGRAM and
- * UPGRADE_BOT_TIER are all handled before the actor lookup: they're editor edits, not an actor
- * performing a timed action, so they must work even while the bot is mid-action.
+ * EDIT_PROGRAM, SET_FAILURE_POLICY, SET_BOT_PAUSED, SET_BOT_TIER, SAVE_ROUTINE, ASSIGN_ROUTINE,
+ * COPY_PROGRAM and UPGRADE_BOT_TIER are all handled before the actor lookup: they're editor edits,
+ * not an actor performing a timed action, so they must work even while the bot is mid-action.
  */
 export function executeAction(state: SimState, actorId: EntityId, request: ActionRequest): ActionResult {
   if (request.op === 'EDIT_PROGRAM') {
@@ -244,6 +252,9 @@ export function executeAction(state: SimState, actorId: EntityId, request: Actio
   }
   if (request.op === 'SET_FAILURE_POLICY') {
     return setFailurePolicy(state, request.botId, request.policy)
+  }
+  if (request.op === 'SET_BOT_PAUSED') {
+    return setBotPaused(state, request.botId, request.paused)
   }
   if (request.op === 'SET_BOT_TIER') {
     return setBotTier(state, request.botId, request.tier)

@@ -1,4 +1,4 @@
-import type { ActionRequest } from './actions'
+import type { ActionRequest, ActionResult } from './actions'
 import { executeAction, isActorBusy } from './actions'
 import type { BotRuntime, Frame } from './botRuntime'
 import { evaluateCondition } from './conditions'
@@ -143,8 +143,22 @@ function tryExecuteInstruction(
     return { ok: false, reason: result.reason ?? 'action failed' }
   }
 
-  const output = result.producedEntityId === undefined ? resolved : entityResolvedTarget(state, result.producedEntityId)
+  const output = outcomeResult(state, result, resolved)
   return { ok: true, result: output }
+}
+
+/** What `lastResult` becomes after a committed instruction: the entity it produced, if any; failing
+ * that the tile it'll produce something onto later (a deferred effect — see actions.ts's
+ * `producedTile` and useVerb.ts's useResource/stepHarvests); failing that, whatever was already
+ * resolved (an op with no output of its own, e.g. MOVE_TO). */
+function outcomeResult(state: SimState, result: ActionResult, resolved: ResolvedTarget): ResolvedTarget | null {
+  if (result.producedEntityId !== undefined) {
+    return entityResolvedTarget(state, result.producedEntityId)
+  }
+  if (result.producedTile !== undefined) {
+    return { kind: 'tile', tile: result.producedTile }
+  }
+  return resolved
 }
 
 /** WAIT has no target to resolve — it just idles the actor for its own duration. */
@@ -175,7 +189,7 @@ function applyFailurePolicy(runtime: BotRuntime, frame: Frame, reason: string, t
 }
 
 function stepBot(state: SimState, botId: EntityId, runtime: BotRuntime): void {
-  if (runtime.status === 'halted') {
+  if (runtime.paused || runtime.status === 'halted') {
     return
   }
   const actor = getEntity(state, botId)

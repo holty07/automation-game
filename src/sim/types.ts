@@ -25,8 +25,10 @@ export type EntityType =
   | 'wheat'
   | ItemKind
 
-/** Buildings the player can place on an empty tile, via a blueprint. */
-export type BuildableType = 'stockpile' | 'benchSaw' | 'mill'
+/** Things the player can place on an empty tile, via a blueprint — buildings, plus a new bot,
+ * which starts with an empty program once its blueprint is fully stocked (see machines.ts's
+ * stepBlueprints). */
+export type BuildableType = 'stockpile' | 'benchSaw' | 'mill' | 'bot'
 
 export type EntityId = number
 
@@ -58,8 +60,14 @@ export interface Entity {
    * elapses. Null for non-machines (including a growing seedling, which is timed but has no
    * storage output — it is replaced by a wheat entity instead; see stepCrops). */
   craftingOutput: ItemKind | null
-  /** The building a `blueprint` entity will become once its storage covers BUILDING_COSTS for
-   * this type (see machines.ts's stepBlueprints). Null for every other entity type. */
+  /** Tick at which the current craftingUntilTick timer was started. craftingUntilTick alone only
+   * says when a timed process is *due*; this is what makes "how much has elapsed" computable, so a
+   * progress indicator can be drawn for any of them (crafting, chopping/mining, growth) without
+   * needing to know each one's total duration by any other means. Null whenever craftingUntilTick
+   * is (kept in lockstep with it: set together, cleared together). */
+  craftingStartedTick: number | null
+  /** What a `blueprint` entity will become once its storage covers BUILDING_COSTS for this type
+   * (see machines.ts's stepBlueprints). Null for every other entity type. */
   blueprintOf: BuildableType | null
 }
 

@@ -38,6 +38,14 @@ export interface BotRuntime {
   status: BotStatus
   blockedReason?: string
   failurePolicy: FailurePolicy
+  /** Player-toggled halt, independent of status: while true, stepBots and stepMovement both skip
+   * this bot entirely, freezing it exactly where it stands until resumed. */
+  paused: boolean
+  /** The tick `paused` last became true, or null while not paused — lets botControl.ts's
+   * setBotPaused shift the actor's busyUntilTick forward by however long the pause lasted, so a
+   * timed action's remaining cooldown survives the pause instead of evaporating (state.tick itself
+   * never stops advancing just because one bot is paused). */
+  pausedAtTick: number | null
   /** Register holding the previous instruction's result, read by the `lastResult` target binding. */
   lastResult: ResolvedTarget | null
   /** Under the 'wait' failure policy, the tick at which resolution should be retried. */
@@ -61,6 +69,8 @@ export function createBotRuntime(
     currentAction: null,
     status: 'running',
     failurePolicy,
+    paused: false,
+    pausedAtTick: null,
     lastResult: null,
     blockedRetryAt: 0,
   }

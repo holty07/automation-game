@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addBenchSaw, addEntity, addMill, addStockpile, createWorld, getEntity } from '../../src/sim/world'
+import { addBenchSaw, addEntity, addMill, addStockpile, addTree, createWorld, getEntity } from '../../src/sim/world'
 import {
   BENCH_SAW_RECIPES,
   BUILDING_COSTS,
@@ -98,6 +98,7 @@ describe('machines', () => {
     if (benchSaw === undefined) {
       throw new Error('bench saw missing')
     }
+    benchSaw.craftingStartedTick = state.tick
     benchSaw.craftingUntilTick = state.tick + PLANK_RECIPE.ticks
     benchSaw.craftingOutput = PLANK_RECIPE.output
 
@@ -106,6 +107,7 @@ describe('machines', () => {
       stepMachines(state)
     }
 
+    expect(benchSaw.craftingStartedTick).toBeNull()
     expect(benchSaw.craftingUntilTick).toBeNull()
     expect(benchSaw.craftingOutput).toBeNull()
     expect(benchSaw.storage).toEqual({ plank: 1 })
@@ -143,6 +145,26 @@ describe('machines', () => {
     expect(() => stepMachines(state)).not.toThrow()
     expect(benchSaw.craftingUntilTick).not.toBeNull()
     expect(benchSaw.storage).toEqual({})
+  })
+
+  it('never touches a non-machine entity even if it somehow has both crafting fields set', () => {
+    // A tree/rock mid-harvest only ever sets craftingUntilTick, never craftingOutput (see
+    // useVerb.ts) — this proves the type filter itself, independent of that convention, so a
+    // future non-machine use of these fields can't silently have its timer cleared here.
+    const state = createWorld(5, 5, 1)
+    const treeId = addTree(state, 1, 1)
+    const tree = getEntity(state, treeId)
+    if (tree === undefined) {
+      throw new Error('tree missing')
+    }
+    tree.craftingUntilTick = state.tick - 1 // already elapsed
+    tree.craftingOutput = 'log'
+
+    stepMachines(state)
+
+    expect(getEntity(state, treeId)?.type).toBe('tree')
+    expect(tree.craftingUntilTick).not.toBeNull()
+    expect(tree.craftingOutput).not.toBeNull()
   })
 })
 
@@ -233,6 +255,32 @@ describe('blueprints', () => {
     stepBlueprints(state)
 
     expect(getEntity(state, blueprintId)?.type).toBe('mill')
+  })
+
+  it('converts a fully-stocked bot blueprint into a running bot with a fresh, empty program', () => {
+    const state = createWorld(5, 5, 1)
+    const blueprintId = addEntity(state, createBlueprint('bot', { x: 3, y: 4 }))
+    const blueprint = getEntity(state, blueprintId)
+    if (blueprint === undefined) {
+      throw new Error('blueprint missing')
+    }
+    blueprint.storage = { ...BUILDING_COSTS.bot }
+
+    stepBlueprints(state)
+
+    const finished = getEntity(state, blueprintId)
+    expect(finished?.type).toBe('bot')
+    expect(finished?.blueprintOf).toBeNull()
+    expect(finished?.storage).toEqual({})
+
+    const runtime = state.botRuntimes[blueprintId]
+    if (runtime === undefined) {
+      throw new Error('bot runtime missing')
+    }
+    expect(runtime.status).toBe('running')
+    expect(runtime.paused).toBe(false)
+    const program = state.programs[runtime.programId]
+    expect(program?.instructions).toEqual([])
   })
 
   it('leaves non-blueprint entities alone', () => {

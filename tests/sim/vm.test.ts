@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { addBot, addPlayer, addStockpile, addStoneDeposit, addTree, createWorld, getEntity } from '../../src/sim/world'
 import { tick } from '../../src/sim/tick'
+import { executeAction } from '../../src/sim/actions'
 import { createBotRuntime, stepBots } from '../../src/sim/vm'
 import type { Instruction, Program } from '../../src/sim/program'
 
@@ -537,6 +538,80 @@ describe('bot VM', () => {
 
     expect(() => runTicks(state, 5)).not.toThrow()
     expect(state.botRuntimes[botId]?.status).toBe('halted')
+  })
+
+  it('a paused bot makes no progress through its program, then resumes exactly where it left off', () => {
+    const state = createWorld(10, 10, 1)
+    const botId = addBot(state, 5, 5)
+    addTree(state, 6, 5)
+    state.programs[chopProgram.id] = chopProgram
+    state.botRuntimes[botId] = createBotRuntime(chopProgram.id, chopProgram)
+    const runtime = state.botRuntimes[botId]
+    if (runtime === undefined) {
+      throw new Error('runtime missing')
+    }
+    runtime.paused = true
+
+    runTicks(state, 100)
+
+    expect(runtime.status).toBe('running')
+    expect(state.entities.some((entity) => entity.type === 'tree')).toBe(true)
+
+    runtime.paused = false
+    runTicks(state, 100)
+
+    expect(runtime.status).toBe('halted')
+    expect(state.entities.some((entity) => entity.type === 'tree')).toBe(false)
+  })
+
+  it('a pause mid-action does not let its remaining cooldown evaporate: the bot stays busy for the same duration it still owed at the moment it paused', () => {
+    // USE on a tree defers its world effect until the chop completes (see useVerb.ts's
+    // useResource/stepHarvests) — busyUntilTick is what paces that, independent of when the tree
+    // actually turns into a log. So the observable here is when the program advances past that
+    // single instruction (to 'halted', since it's the only one), not whether the tree is gone.
+    const state = createWorld(10, 10, 1)
+    const botId = addBot(state, 5, 5)
+    addTree(state, 6, 5)
+    const program: Program = {
+      id: 'chop-only',
+      name: 'chop',
+      version: 1,
+      instructions: [{ id: '1', op: 'USE', args: [{ mode: 'nearestOf', entityType: 'tree' }] }],
+    }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+    const runtime = state.botRuntimes[botId]
+    if (runtime === undefined) {
+      throw new Error('runtime missing')
+    }
+
+    // One tick commits the USE (cost 40 ticks — see entities.ts's ACTION_COSTS), then pause well
+    // before that cooldown would naturally finish.
+    runTicks(state, 1)
+    expect(runtime.currentAction?.op).toBe('USE')
+    const bot = getEntity(state, botId)
+    if (bot === undefined) {
+      throw new Error('bot missing')
+    }
+    expect(bot.busyUntilTick).toBeGreaterThan(state.tick)
+
+    executeAction(state, botId, { op: 'SET_BOT_PAUSED', botId, paused: true })
+    // Far longer than the chop's remaining cooldown — state.tick keeps advancing regardless of
+    // this one bot being paused.
+    runTicks(state, 1000)
+    expect(runtime.status).toBe('running')
+    expect(runtime.currentAction?.op).toBe('USE')
+
+    executeAction(state, botId, { op: 'SET_BOT_PAUSED', botId, paused: false })
+    // Not finished the instant it resumes — the 40 ticks it still owed at the moment of pause
+    // must still be owed now, not silently satisfied by the 1000 ticks that passed while paused.
+    runTicks(state, 1)
+    expect(runtime.status).toBe('running')
+    expect(runtime.currentAction?.op).toBe('USE')
+    // ...but does finish once its real remaining cooldown has actually elapsed.
+    runTicks(state, 40)
+    expect(runtime.status).toBe('halted')
+    expect(runtime.blockedReason).toBe('program complete')
   })
 })
 

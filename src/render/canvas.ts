@@ -4,7 +4,24 @@ import { MOVE_TICKS_PER_TILE } from '../sim/movement'
 import { lockedStockpileItem } from '../sim/machines'
 import type { Camera } from './camera'
 import { lerp, tileToScreen, visibleTileBounds } from './camera'
-import { drawEntity, drawStoredItemBadge, drawTile } from './sprites'
+import { drawBlueprint, drawCraftingProgress, drawEntity, drawStoredItemBadge, drawTile } from './sprites'
+
+/** How much of *any* timed process has elapsed, 0 (just started) to 1 (due) — a machine crafting,
+ * a chop/mine in progress, a seedling or sapling growing. Generic across all of them: `state.tick`
+ * against `craftingStartedTick`/`craftingUntilTick`, whatever the entity's type or the process's
+ * total duration (which varies per recipe for a machine, so it can't be reconstructed from
+ * entity.type alone — this is why craftingStartedTick exists at all). Null (skip drawing) if
+ * either field is missing — including a save file from before craftingStartedTick existed, where a
+ * mid-craft machine would have craftingUntilTick set but craftingStartedTick absent (`undefined`,
+ * not `null`, since it simply isn't in the old JSON) rather than a real start point to measure from. */
+export function craftingProgressFraction(state: SimState, entity: Entity): number | null {
+  const started = entity.craftingStartedTick
+  const until = entity.craftingUntilTick
+  if (typeof started !== 'number' || typeof until !== 'number' || until === started) {
+    return null
+  }
+  return (state.tick - started) / (until - started)
+}
 
 /**
  * An entity's tile position only advances once every MOVE_TICKS_PER_TILE ticks, not every
@@ -54,13 +71,22 @@ export function render(
   for (const entity of state.entities) {
     const { x, y } = interpolatedPos(entity, alpha)
     const screen = tileToScreen(camera, followX, followY, x, y)
-    drawEntity(ctx, entity.type, screen.x, screen.y, camera.tileSize)
+    if (entity.type === 'blueprint') {
+      drawBlueprint(ctx, entity.blueprintOf, screen.x, screen.y, camera.tileSize)
+    } else {
+      drawEntity(ctx, entity.type, screen.x, screen.y, camera.tileSize)
+    }
 
     if (entity.type === 'stockpile' && entity.storage !== null) {
       const stored = lockedStockpileItem(entity.storage)
       if (stored !== null) {
         drawStoredItemBadge(ctx, stored, screen.x, screen.y, camera.tileSize)
       }
+    }
+
+    const craftingFraction = craftingProgressFraction(state, entity)
+    if (craftingFraction !== null) {
+      drawCraftingProgress(ctx, craftingFraction, screen.x, screen.y, camera.tileSize)
     }
   }
 }

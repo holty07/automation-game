@@ -1,4 +1,4 @@
-import type { EntityType, ItemKind, TileType } from '../sim/types'
+import type { BuildableType, EntityType, ItemKind, TileType } from '../sim/types'
 import { entityImage, tileImage } from './assets'
 
 const TILE_COLOURS: Record<TileType, string> = {
@@ -58,6 +58,57 @@ export function drawEntity(ctx: CanvasRenderingContext2D, type: EntityType, x: n
   ctx.beginPath()
   ctx.roundRect(x + inset, y + inset, drawn, drawn, drawn * 0.3)
   ctx.fill()
+}
+
+/** A blueprint's own preview: a dimmed rendering of its *target* sprite (falling back to a
+ * dimmed flat-colour square, same shape as drawEntity's placeholder, if that sprite hasn't
+ * loaded), so the buildable kinds read differently from one another at a glance — a bot
+ * blueprint looks like a faint bot, a mill blueprint a faint mill — without needing dedicated
+ * blueprint art. The dashed outline is the "not built yet" cue common to every kind. */
+export function drawBlueprint(ctx: CanvasRenderingContext2D, kind: BuildableType | null, x: number, y: number, size: number): void {
+  const inset = size * 0.15
+  const drawn = size - inset * 2
+
+  ctx.save()
+  ctx.globalAlpha = 0.5
+  const image = kind === null ? null : entityImage(kind)
+  if (image !== null) {
+    ctx.drawImage(image, x, y, size, size)
+  } else {
+    ctx.fillStyle = kind === null ? ENTITY_COLOURS.blueprint : ENTITY_COLOURS[kind]
+    ctx.beginPath()
+    ctx.roundRect(x + inset, y + inset, drawn, drawn, drawn * 0.3)
+    ctx.fill()
+  }
+  ctx.restore()
+
+  ctx.save()
+  ctx.strokeStyle = '#5af'
+  ctx.lineWidth = 2
+  ctx.setLineDash([4, 3])
+  ctx.beginPath()
+  ctx.roundRect(x + inset, y + inset, drawn, drawn, drawn * 0.3)
+  ctx.stroke()
+  ctx.restore()
+}
+
+/** A thin fill bar under a tile going through any timed process — a machine crafting, a chop/mine
+ * in progress, a seedling or sapling growing — showing how much of it has elapsed so far. The
+ * "work is being done" cue that makes an entity staying put and unchanged for a while read as
+ * in-progress rather than stuck. `fraction` is 0 at the moment the timer starts and 1 the instant
+ * it's due to complete (see canvas.ts's craftingProgressFraction, which derives it generically from
+ * craftingStartedTick/craftingUntilTick — no per-entity-type knowledge needed here at all). */
+export function drawCraftingProgress(ctx: CanvasRenderingContext2D, fraction: number, x: number, y: number, size: number): void {
+  const clamped = Math.min(1, Math.max(0, fraction))
+  const barHeight = size * 0.12
+  const barWidth = size * 0.8
+  const barX = x + size * 0.1
+  const barY = y + size - barHeight - size * 0.06
+
+  ctx.fillStyle = '#000a'
+  ctx.fillRect(barX, barY, barWidth, barHeight)
+  ctx.fillStyle = '#5af'
+  ctx.fillRect(barX, barY, barWidth * clamped, barHeight)
 }
 
 /** A small badge in a stockpile's corner showing what it currently holds — a stockpile locks to

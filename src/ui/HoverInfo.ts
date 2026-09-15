@@ -91,7 +91,7 @@ function describeBot(state: SimState, entity: Entity): string[] {
   }
   const program = state.programs[runtime.programId]
   const status = runtime.blockedReason === undefined ? runtime.status : `${runtime.status} (${runtime.blockedReason})`
-  return [`Program: ${program?.name ?? runtime.programId}`, `Status: ${status}`]
+  return [`Program: ${program?.name ?? runtime.programId}`, `Status: ${runtime.paused ? `paused (${status})` : status}`]
 }
 
 /** The tooltip's lines for whatever is under the cursor: a title, plus type-specific detail. */
@@ -108,6 +108,10 @@ export function describeEntity(state: SimState, entity: Entity): string[] {
   }
   if ((entity.type === 'seedling' || entity.type === 'youngTree') && entity.craftingUntilTick !== null) {
     return [title, `Growing (${Math.max(0, entity.craftingUntilTick - state.tick)} ticks left)`]
+  }
+  if ((entity.type === 'tree' || entity.type === 'rock') && entity.craftingUntilTick !== null) {
+    const verb = entity.type === 'tree' ? 'Chopping' : 'Mining'
+    return [title, `${verb} (${Math.max(0, entity.craftingUntilTick - state.tick)} ticks left)`]
   }
   if (entity.type === 'stoneDeposit') {
     return [title, 'Needs a pickaxe to mine']

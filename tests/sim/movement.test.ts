@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { addPlayer, createWorld, getEntity } from '../../src/sim/world'
+import { addBot, addPlayer, createWorld, getEntity } from '../../src/sim/world'
 import { MOVE_TICKS_PER_TILE, stepMovement } from '../../src/sim/movement'
+import { createBotRuntime } from '../../src/sim/vm'
+import type { Program } from '../../src/sim/program'
 
 describe('movement', () => {
   it('moves one tile every MOVE_TICKS_PER_TILE ticks, x before y', () => {
@@ -71,5 +73,35 @@ describe('movement', () => {
     expect(player.pos).toEqual({ x: 3, y: 0 })
     expect(player.moveTarget).toBeNull()
     expect(player.path).toEqual([])
+  })
+
+  it('freezes a paused bot in place, leaving its move target queued for when it resumes', () => {
+    const state = createWorld(8, 8, 1)
+    const botId = addBot(state, 0, 0)
+    const bot = getEntity(state, botId)
+    if (bot === undefined) {
+      throw new Error('bot missing')
+    }
+    const program: Program = { id: 'p', name: 'noop', version: 1, instructions: [] }
+    state.programs[program.id] = program
+    state.botRuntimes[botId] = createBotRuntime(program.id, program)
+    const runtime = state.botRuntimes[botId]
+    if (runtime === undefined) {
+      throw new Error('runtime missing')
+    }
+    runtime.paused = true
+    bot.moveTarget = { x: 1, y: 0 }
+
+    for (let i = 0; i < MOVE_TICKS_PER_TILE; i += 1) {
+      stepMovement(state)
+    }
+    expect(bot.pos).toEqual({ x: 0, y: 0 })
+    expect(bot.moveTarget).toEqual({ x: 1, y: 0 })
+
+    runtime.paused = false
+    for (let i = 0; i < MOVE_TICKS_PER_TILE; i += 1) {
+      stepMovement(state)
+    }
+    expect(bot.pos).toEqual({ x: 1, y: 0 })
   })
 })

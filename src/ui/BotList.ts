@@ -52,7 +52,7 @@ export function createBotList(container: HTMLElement, state: SimState, onSelect:
         list.append(row)
       }
       const runtime = state.botRuntimes[bot.id]
-      const status = runtime === undefined ? 'idle' : runtime.status
+      const status = runtime === undefined ? 'idle' : runtime.paused ? 'paused' : runtime.status
       row.textContent = `Bot ${bot.id} — ${status}`
       row.classList.toggle('selected', bot.id === selectedId)
     }

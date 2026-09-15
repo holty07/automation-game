@@ -55,6 +55,12 @@ export function createScriptEditor(container: HTMLElement, state: SimState, tool
   let addedCounter = 0
   let routineCounter = 0
   let assignedProgramCounter = 0
+  /** The instruction array `render()` last drew the list from — reference, not content, since
+   * every program edit (including a live recording's per-instruction append; see Toolbar.ts's
+   * appendLiveInstruction) replaces this array wholesale via EDIT_PROGRAM rather than mutating it
+   * in place. update() compares against this every frame so the instruction list keeps growing in
+   * real time while recording, not just once Stop is clicked. */
+  let lastRenderedInstructions: Instruction[] | null = null
 
   const panel = document.createElement('div')
   panel.className = 'script-editor'
@@ -91,9 +97,9 @@ export function createScriptEditor(container: HTMLElement, state: SimState, tool
   const recordButton = document.createElement('button')
   /** Recording is a single, shared session (see Toolbar.ts) — this button drives it only while
    * either nothing else is recording, or this bot is already the one being recorded onto. It's
-   * disabled (not hidden) whenever a *different* recording is running (another bot, or a fresh
-   * deploy via the toolbar's own Record button), so it never looks clickable in a way that would
-   * silently steal or clobber that other recording. */
+   * disabled (not hidden) whenever a recording is running for a *different* bot — started from
+   * that bot's own panel before the player switched this one to it — so it never looks clickable
+   * in a way that would silently steal or clobber that other recording. */
   function refreshRecordButton(): void {
     if (!toolbar.isRecording()) {
       recordButton.textContent = 'Record'
@@ -120,10 +126,32 @@ export function createScriptEditor(container: HTMLElement, state: SimState, tool
     refreshRecordButton()
   })
 
+  const pauseButton = document.createElement('button')
+  /** Text always reflects the *action* the button takes next, not the bot's current state — 'Pause'
+   * while running, 'Play' once paused — so the label never needs a separate status readout beside it. */
+  function refreshPauseButton(): void {
+    if (openBotId === null) {
+      return
+    }
+    const runtime = state.botRuntimes[openBotId]
+    pauseButton.textContent = runtime?.paused === true ? 'Play' : 'Pause'
+  }
+  pauseButton.addEventListener('click', () => {
+    if (openBotId === null) {
+      return
+    }
+    const runtime = state.botRuntimes[openBotId]
+    if (runtime === undefined) {
+      return
+    }
+    executeAction(state, openBotId, { op: 'SET_BOT_PAUSED', botId: openBotId, paused: !runtime.paused })
+    refreshPauseButton()
+  })
+
   const closeButton = document.createElement('button')
   closeButton.textContent = 'Close'
   closeButton.addEventListener('click', () => close())
-  header.append(title, statusLine, recordButton, failurePolicySelect, closeButton)
+  header.append(title, statusLine, pauseButton, recordButton, failurePolicySelect, closeButton)
 
   const botControls = createBotControls(panel, {
     onUpgradeTier() {
@@ -280,6 +308,7 @@ export function createScriptEditor(container: HTMLElement, state: SimState, tool
 
     title.textContent = `Bot ${openBotId} — ${program.name}`
     failurePolicySelect.value = runtime.failurePolicy
+    refreshPauseButton()
 
     const { text, overCap } = instructionCounterText(program, runtime.tier)
     counter.textContent = text
@@ -301,6 +330,7 @@ export function createScriptEditor(container: HTMLElement, state: SimState, tool
     for (const row of flattenForDisplay(program.instructions)) {
       list.append(createInstructionRow(row, row.instruction.id === activeId, callbacks))
     }
+    lastRenderedInstructions = program.instructions
 
     refreshRecordButton()
   }
@@ -321,15 +351,22 @@ export function createScriptEditor(container: HTMLElement, state: SimState, tool
         close()
         return
       }
+      // A live recording writes straight onto this bot's program from outside the editor (see
+      // Toolbar.ts's appendLiveInstruction) — catch that here and do a full re-render, so the
+      // instruction list visibly grows in real time instead of only once Stop is clicked.
+      if (state.programs[runtime.programId]?.instructions !== lastRenderedInstructions) {
+        render()
+      }
       const activeId = currentInstructionId(runtime)
       for (const row of Array.from(list.children)) {
         if (row instanceof HTMLElement) {
           row.classList.toggle('instruction-row-active', row.dataset.instructionId === activeId)
         }
       }
-      statusLine.textContent =
-        runtime.blockedReason === undefined ? runtime.status : `${runtime.status} — ${runtime.blockedReason}`
+      const statusText = runtime.blockedReason === undefined ? runtime.status : `${runtime.status} — ${runtime.blockedReason}`
+      statusLine.textContent = runtime.paused ? `paused (${statusText})` : statusText
       refreshRecordButton()
+      refreshPauseButton()
     },
     destroy(): void {
       botControls.destroy()
