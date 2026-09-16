@@ -90,6 +90,10 @@ const ACTION_COSTS: Record<string, number> = {
   'BUILD:benchSaw': 20,
   'BUILD:stoneCutter': 20,
   'BUILD:mill': 20,
+  'BUILD:gearPress': 20,
+  'BUILD:circuitBench': 20,
+  'BUILD:coreForge': 20,
+  'BUILD:toolBench': 20,
   'BUILD:bot': 20,
   'PLANT:sapling': 30,
 }

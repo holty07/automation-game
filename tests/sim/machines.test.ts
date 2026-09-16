@@ -1,24 +1,55 @@
 import { describe, expect, it } from 'vitest'
-import { addBenchSaw, addEntity, addMill, addStockpile, addStoneCutter, addTree, createWorld, getEntity } from '../../src/sim/world'
+import {
+  addBenchSaw,
+  addCircuitBench,
+  addCoreForge,
+  addEntity,
+  addGearPress,
+  addMill,
+  addStockpile,
+  addStoneCutter,
+  addToolBench,
+  addTree,
+  createWorld,
+  getEntity,
+} from '../../src/sim/world'
 import {
   BENCH_SAW_RECIPES,
   BUILDING_COSTS,
+  CIRCUIT_BENCH_RECIPES,
   CONTAINER_CAPACITY,
+  CORE_FORGE_RECIPES,
+  GEAR_PRESS_RECIPES,
   MILL_RECIPES,
   STOCKPILE_CAPACITY,
   STONE_CUTTER_RECIPES,
+  TOOL_BENCH_RECIPES,
   capacityFor,
   createBlueprint,
   lockedStockpileItem,
+  recipeAccepting,
+  recipeSatisfied,
   recipesFor,
   stepBlueprints,
   stepMachines,
 } from '../../src/sim/machines'
 
-const PLANK_RECIPE = BENCH_SAW_RECIPES.log
-const FLOUR_RECIPE = MILL_RECIPES.grain
-const BLOCK_RECIPE = STONE_CUTTER_RECIPES.stone
-if (PLANK_RECIPE === undefined || FLOUR_RECIPE === undefined || BLOCK_RECIPE === undefined) {
+const PLANK_RECIPE = recipeAccepting(BENCH_SAW_RECIPES, 'log')
+const FLOUR_RECIPE = recipeAccepting(MILL_RECIPES, 'grain')
+const BLOCK_RECIPE = recipeAccepting(STONE_CUTTER_RECIPES, 'stone')
+const GEAR_RECIPE = recipeAccepting(GEAR_PRESS_RECIPES, 'block')
+const CIRCUIT_RECIPE = recipeAccepting(CIRCUIT_BENCH_RECIPES, 'gear')
+const CORE_RECIPE = recipeAccepting(CORE_FORGE_RECIPES, 'circuit')
+const PICKAXE_RECIPE = recipeAccepting(TOOL_BENCH_RECIPES, 'plank')
+if (
+  PLANK_RECIPE === undefined ||
+  FLOUR_RECIPE === undefined ||
+  BLOCK_RECIPE === undefined ||
+  GEAR_RECIPE === undefined ||
+  CIRCUIT_RECIPE === undefined ||
+  CORE_RECIPE === undefined ||
+  PICKAXE_RECIPE === undefined
+) {
   throw new Error('expected recipes missing')
 }
 
@@ -75,6 +106,46 @@ describe('machines', () => {
     expect(mill?.type).toBe('mill')
     expect(mill?.storage).toEqual({})
     expect(mill?.craftingUntilTick).toBeNull()
+  })
+
+  it('creates a gear press idle and with an empty store', () => {
+    const state = createWorld(5, 5, 1)
+    const gearPressId = addGearPress(state, 1, 1)
+
+    const gearPress = getEntity(state, gearPressId)
+    expect(gearPress?.type).toBe('gearPress')
+    expect(gearPress?.storage).toEqual({})
+    expect(gearPress?.craftingUntilTick).toBeNull()
+  })
+
+  it('creates a circuit bench idle and with an empty store', () => {
+    const state = createWorld(5, 5, 1)
+    const circuitBenchId = addCircuitBench(state, 1, 1)
+
+    const circuitBench = getEntity(state, circuitBenchId)
+    expect(circuitBench?.type).toBe('circuitBench')
+    expect(circuitBench?.storage).toEqual({})
+    expect(circuitBench?.craftingUntilTick).toBeNull()
+  })
+
+  it('creates a core forge idle and with an empty store', () => {
+    const state = createWorld(5, 5, 1)
+    const coreForgeId = addCoreForge(state, 1, 1)
+
+    const coreForge = getEntity(state, coreForgeId)
+    expect(coreForge?.type).toBe('coreForge')
+    expect(coreForge?.storage).toEqual({})
+    expect(coreForge?.craftingUntilTick).toBeNull()
+  })
+
+  it('creates a tool bench idle and with an empty store', () => {
+    const state = createWorld(5, 5, 1)
+    const toolBenchId = addToolBench(state, 1, 1)
+
+    const toolBench = getEntity(state, toolBenchId)
+    expect(toolBench?.type).toBe('toolBench')
+    expect(toolBench?.storage).toEqual({})
+    expect(toolBench?.craftingUntilTick).toBeNull()
   })
 
   it('leaves an idle bench saw alone', () => {
@@ -169,6 +240,86 @@ describe('machines', () => {
     expect(mill.storage).toEqual({ flour: 1 })
   })
 
+  it('produces a gear from a pressing gear press once its recipe time elapses', () => {
+    const state = createWorld(5, 5, 1)
+    const gearPressId = addGearPress(state, 1, 1)
+    const gearPress = getEntity(state, gearPressId)
+    if (gearPress === undefined) {
+      throw new Error('gear press missing')
+    }
+    gearPress.craftingStartedTick = state.tick
+    gearPress.craftingUntilTick = state.tick + GEAR_RECIPE.ticks
+    gearPress.craftingOutput = GEAR_RECIPE.output
+
+    for (let i = 0; i < GEAR_RECIPE.ticks; i += 1) {
+      state.tick += 1
+      stepMachines(state)
+    }
+
+    expect(gearPress.craftingUntilTick).toBeNull()
+    expect(gearPress.storage).toEqual({ gear: 1 })
+  })
+
+  it('produces a circuit from an assembling circuit bench once its recipe time elapses', () => {
+    const state = createWorld(5, 5, 1)
+    const circuitBenchId = addCircuitBench(state, 1, 1)
+    const circuitBench = getEntity(state, circuitBenchId)
+    if (circuitBench === undefined) {
+      throw new Error('circuit bench missing')
+    }
+    circuitBench.craftingStartedTick = state.tick
+    circuitBench.craftingUntilTick = state.tick + CIRCUIT_RECIPE.ticks
+    circuitBench.craftingOutput = CIRCUIT_RECIPE.output
+
+    for (let i = 0; i < CIRCUIT_RECIPE.ticks; i += 1) {
+      state.tick += 1
+      stepMachines(state)
+    }
+
+    expect(circuitBench.craftingUntilTick).toBeNull()
+    expect(circuitBench.storage).toEqual({ circuit: 1 })
+  })
+
+  it('produces a core from a working core forge once its recipe time elapses', () => {
+    const state = createWorld(5, 5, 1)
+    const coreForgeId = addCoreForge(state, 1, 1)
+    const coreForge = getEntity(state, coreForgeId)
+    if (coreForge === undefined) {
+      throw new Error('core forge missing')
+    }
+    coreForge.craftingStartedTick = state.tick
+    coreForge.craftingUntilTick = state.tick + CORE_RECIPE.ticks
+    coreForge.craftingOutput = CORE_RECIPE.output
+
+    for (let i = 0; i < CORE_RECIPE.ticks; i += 1) {
+      state.tick += 1
+      stepMachines(state)
+    }
+
+    expect(coreForge.craftingUntilTick).toBeNull()
+    expect(coreForge.storage).toEqual({ core: 1 })
+  })
+
+  it('produces a pickaxe from a working tool bench once its recipe time elapses', () => {
+    const state = createWorld(5, 5, 1)
+    const toolBenchId = addToolBench(state, 1, 1)
+    const toolBench = getEntity(state, toolBenchId)
+    if (toolBench === undefined) {
+      throw new Error('tool bench missing')
+    }
+    toolBench.craftingStartedTick = state.tick
+    toolBench.craftingUntilTick = state.tick + PICKAXE_RECIPE.ticks
+    toolBench.craftingOutput = PICKAXE_RECIPE.output
+
+    for (let i = 0; i < PICKAXE_RECIPE.ticks; i += 1) {
+      state.tick += 1
+      stepMachines(state)
+    }
+
+    expect(toolBench.craftingUntilTick).toBeNull()
+    expect(toolBench.storage).toEqual({ pickaxe: 1 })
+  })
+
   it('never touches a timed entity with no recorded output, such as a growing seedling', () => {
     const state = createWorld(5, 5, 1)
     const benchSawId = addBenchSaw(state, 1, 1)
@@ -218,16 +369,82 @@ describe('recipesFor', () => {
     expect(recipesFor('mill')).toBe(MILL_RECIPES)
   })
 
+  it('returns the gear press recipe table for a gear press', () => {
+    expect(recipesFor('gearPress')).toBe(GEAR_PRESS_RECIPES)
+  })
+
+  it('returns the circuit bench recipe table for a circuit bench', () => {
+    expect(recipesFor('circuitBench')).toBe(CIRCUIT_BENCH_RECIPES)
+  })
+
+  it('returns the core forge recipe table for a core forge', () => {
+    expect(recipesFor('coreForge')).toBe(CORE_FORGE_RECIPES)
+  })
+
+  it('returns the tool bench recipe table for a tool bench', () => {
+    expect(recipesFor('toolBench')).toBe(TOOL_BENCH_RECIPES)
+  })
+
   it('returns null for anything that is not a machine', () => {
     expect(recipesFor('stockpile')).toBeNull()
     expect(recipesFor('tree')).toBeNull()
   })
 })
 
+describe('recipeAccepting', () => {
+  it('finds the recipe that consumes a given item', () => {
+    expect(recipeAccepting(BENCH_SAW_RECIPES, 'log')).toBe(PLANK_RECIPE)
+  })
+
+  it('finds the same multi-input recipe regardless of which of its inputs is asked about', () => {
+    expect(recipeAccepting(TOOL_BENCH_RECIPES, 'plank')).toBe(PICKAXE_RECIPE)
+    expect(recipeAccepting(TOOL_BENCH_RECIPES, 'block')).toBe(PICKAXE_RECIPE)
+  })
+
+  it('is undefined for an item none of the recipes consume', () => {
+    expect(recipeAccepting(BENCH_SAW_RECIPES, 'grain')).toBeUndefined()
+  })
+})
+
+describe('recipeSatisfied', () => {
+  it('is true for a single-input recipe once that one input is covered', () => {
+    expect(recipeSatisfied(PLANK_RECIPE, { log: 1 })).toBe(true)
+    expect(recipeSatisfied(PLANK_RECIPE, {})).toBe(false)
+  })
+
+  it('is false for a multi-input recipe until every input is covered', () => {
+    expect(recipeSatisfied(PICKAXE_RECIPE, {})).toBe(false)
+    expect(recipeSatisfied(PICKAXE_RECIPE, { plank: 1 })).toBe(false)
+    expect(recipeSatisfied(PICKAXE_RECIPE, { block: 1 })).toBe(false)
+    expect(recipeSatisfied(PICKAXE_RECIPE, { plank: 1, block: 1 })).toBe(true)
+  })
+
+  it('is true once storage meets or exceeds every input, not just equals it', () => {
+    expect(recipeSatisfied(PICKAXE_RECIPE, { plank: 5, block: 3 })).toBe(true)
+  })
+})
+
 describe('BENCH_SAW_RECIPES / STONE_CUTTER_RECIPES', () => {
   it('the bench saw no longer turns stone into blocks -- that moved to the stone cutter', () => {
-    expect(BENCH_SAW_RECIPES.stone).toBeUndefined()
-    expect(STONE_CUTTER_RECIPES.stone?.output).toBe('block')
+    expect(recipeAccepting(BENCH_SAW_RECIPES, 'stone')).toBeUndefined()
+    expect(recipeAccepting(STONE_CUTTER_RECIPES, 'stone')?.output).toBe('block')
+  })
+
+  it('the bench saw only ever produces plank -- gear/circuit/core/pickaxe each moved to their own machine', () => {
+    expect(recipeAccepting(BENCH_SAW_RECIPES, 'block')).toBeUndefined()
+    expect(recipeAccepting(BENCH_SAW_RECIPES, 'gear')).toBeUndefined()
+    expect(recipeAccepting(BENCH_SAW_RECIPES, 'circuit')).toBeUndefined()
+    expect(recipeAccepting(BENCH_SAW_RECIPES, 'plank')).toBeUndefined()
+    expect(recipeAccepting(GEAR_PRESS_RECIPES, 'block')?.output).toBe('gear')
+    expect(recipeAccepting(CIRCUIT_BENCH_RECIPES, 'gear')?.output).toBe('circuit')
+    expect(recipeAccepting(CORE_FORGE_RECIPES, 'circuit')?.output).toBe('core')
+    expect(recipeAccepting(TOOL_BENCH_RECIPES, 'plank')?.output).toBe('pickaxe')
+  })
+
+  it('the tool bench needs both a plank and a block for its pickaxe recipe', () => {
+    const recipe = recipeAccepting(TOOL_BENCH_RECIPES, 'plank')
+    expect(recipe?.inputs).toEqual({ plank: 1, block: 1 })
+    expect(recipeAccepting(TOOL_BENCH_RECIPES, 'block')).toBe(recipe)
   })
 })
 
@@ -240,6 +457,10 @@ describe('capacityFor', () => {
     expect(capacityFor('benchSaw')).toBe(CONTAINER_CAPACITY)
     expect(capacityFor('stoneCutter')).toBe(CONTAINER_CAPACITY)
     expect(capacityFor('mill')).toBe(CONTAINER_CAPACITY)
+    expect(capacityFor('gearPress')).toBe(CONTAINER_CAPACITY)
+    expect(capacityFor('circuitBench')).toBe(CONTAINER_CAPACITY)
+    expect(capacityFor('coreForge')).toBe(CONTAINER_CAPACITY)
+    expect(capacityFor('toolBench')).toBe(CONTAINER_CAPACITY)
     expect(capacityFor('blueprint')).toBe(CONTAINER_CAPACITY)
   })
 
@@ -320,6 +541,25 @@ describe('blueprints', () => {
     expect(finished?.type).toBe('stoneCutter')
     expect(finished?.blueprintOf).toBeNull()
     expect(finished?.storage).toEqual({})
+  })
+
+  it('converts a fully-stocked blueprint into each of the four newer machine kinds', () => {
+    for (const kind of ['gearPress', 'circuitBench', 'coreForge', 'toolBench'] as const) {
+      const state = createWorld(5, 5, 1)
+      const blueprintId = addEntity(state, createBlueprint(kind, { x: 2, y: 3 }))
+      const blueprint = getEntity(state, blueprintId)
+      if (blueprint === undefined) {
+        throw new Error('blueprint missing')
+      }
+      blueprint.storage = { ...BUILDING_COSTS[kind] }
+
+      stepBlueprints(state)
+
+      const finished = getEntity(state, blueprintId)
+      expect(finished?.type).toBe(kind)
+      expect(finished?.blueprintOf).toBeNull()
+      expect(finished?.storage).toEqual({})
+    }
   })
 
   it('converts once storage meets or exceeds every required item, not just equals it', () => {

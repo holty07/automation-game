@@ -5,42 +5,44 @@ import { staticEntity } from './entities'
 import { instantiateProgram } from './routines'
 import type { BuildableType, EntityType, ItemKind, SimState, TileRef } from './types'
 
+/** `inputs` names every item kind (and count) a recipe consumes — one for most recipes, but a
+ * machine can require several different items at once, delivered in any order (see
+ * TOOL_BENCH_RECIPES). A machine accumulates deliveries in its own `storage` (see actions.ts's
+ * giveTo) until every input is covered, then consumes them all at once and starts the timer. */
 export interface Recipe {
-  input: ItemKind
+  inputs: Partial<Record<ItemKind, number>>
   output: ItemKind
   ticks: number
 }
 
-function recipeTable(recipes: Recipe[]): Partial<Record<ItemKind, Recipe>> {
-  const table: Partial<Record<ItemKind, Recipe>> = {}
-  for (const recipe of recipes) {
-    table[recipe.input] = recipe
-  }
-  return table
-}
-
-/** The bench saw refines raw resources into successively finer materials: wood into planks (the
- * bot body) and onward into the gears/circuits/cores the Mk2-4 upgrade path needs — plus a plank
- * into a pickaxe, the tool a stone deposit needs to be mined at all. Stone into blocks is the
- * stone cutter's job instead (see STONE_CUTTER_RECIPES), not the bench saw's. Each recipe is keyed
- * by its input, so giving the bench saw an item looks up the right one. */
-export const BENCH_SAW_RECIPES = recipeTable([
-  { input: 'log', output: 'plank', ticks: 80 },
-  { input: 'block', output: 'gear', ticks: 100 },
-  { input: 'gear', output: 'circuit', ticks: 120 },
-  { input: 'circuit', output: 'core', ticks: 150 },
-  { input: 'plank', output: 'pickaxe', ticks: 60 },
-])
+/** The bench saw turns logs into the planks the bot body (and several other machines) are built
+ * from. Every other refining step of the resource chain — stone into blocks, grain into flour,
+ * and each rung of the gear/circuit/core/pickaxe ladder — gets its own dedicated machine below,
+ * rather than piling more recipes onto the saw. */
+export const BENCH_SAW_RECIPES: Recipe[] = [{ inputs: { log: 1 }, output: 'plank', ticks: 80 }]
 
 /** The stone cutter turns raw stone into blocks — split out of the bench saw so a dedicated
  * building handles that step of the resource chain. */
-export const STONE_CUTTER_RECIPES = recipeTable([{ input: 'stone', output: 'block', ticks: 80 }])
+export const STONE_CUTTER_RECIPES: Recipe[] = [{ inputs: { stone: 1 }, output: 'block', ticks: 80 }]
 
 /** The mill turns harvested grain into the flour a Mk1 bot needs. */
-export const MILL_RECIPES = recipeTable([{ input: 'grain', output: 'flour', ticks: 60 }])
+export const MILL_RECIPES: Recipe[] = [{ inputs: { grain: 1 }, output: 'flour', ticks: 60 }]
 
-/** The recipe table a machine of `type` crafts from, or null if `type` isn't a machine. */
-export function recipesFor(type: EntityType): Partial<Record<ItemKind, Recipe>> | null {
+/** The gear press turns a cut block into a gear, the material a Mk2 upgrade needs. */
+export const GEAR_PRESS_RECIPES: Recipe[] = [{ inputs: { block: 1 }, output: 'gear', ticks: 100 }]
+
+/** The circuit bench turns a gear into a circuit, the material a Mk3 upgrade needs. */
+export const CIRCUIT_BENCH_RECIPES: Recipe[] = [{ inputs: { gear: 1 }, output: 'circuit', ticks: 120 }]
+
+/** The core forge turns a circuit into a core, the material a Mk4 upgrade needs. */
+export const CORE_FORGE_RECIPES: Recipe[] = [{ inputs: { circuit: 1 }, output: 'core', ticks: 150 }]
+
+/** The tool bench turns a plank and a block into a pickaxe, the tool a stone deposit needs to be
+ * mined at all — the plank forms its handle, the block its head. */
+export const TOOL_BENCH_RECIPES: Recipe[] = [{ inputs: { plank: 1, block: 1 }, output: 'pickaxe', ticks: 60 }]
+
+/** The recipes a machine of `type` crafts from, or null if `type` isn't a machine. */
+export function recipesFor(type: EntityType): Recipe[] | null {
   switch (type) {
     case 'benchSaw':
       return BENCH_SAW_RECIPES
@@ -48,9 +50,29 @@ export function recipesFor(type: EntityType): Partial<Record<ItemKind, Recipe>> 
       return STONE_CUTTER_RECIPES
     case 'mill':
       return MILL_RECIPES
+    case 'gearPress':
+      return GEAR_PRESS_RECIPES
+    case 'circuitBench':
+      return CIRCUIT_BENCH_RECIPES
+    case 'coreForge':
+      return CORE_FORGE_RECIPES
+    case 'toolBench':
+      return TOOL_BENCH_RECIPES
     default:
       return null
   }
+}
+
+/** The recipe among `recipes` that consumes `item` at all, or undefined if none of them do —
+ * every machine currently offers only one recipe, so there's no ambiguity between several
+ * matches, but this stays generic over the list in case a machine ever offers more than one. */
+export function recipeAccepting(recipes: Recipe[], item: ItemKind): Recipe | undefined {
+  return recipes.find((recipe) => item in recipe.inputs)
+}
+
+/** Whether `storage` currently covers every input `recipe` needs, so a machine's craft can begin. */
+export function recipeSatisfied(recipe: Recipe, storage: Partial<Record<ItemKind, number>>): boolean {
+  return (Object.entries(recipe.inputs) as [ItemKind, number][]).every(([item, count]) => (storage[item] ?? 0) >= count)
 }
 
 /** Flat cap on total items (summed across kinds) a machine or blueprint can hold — no economy
@@ -73,8 +95,11 @@ export function capacityFor(type: EntityType): number {
  * to plan. stockpile, benchSaw and stoneCutter are costed in raw log/stone (choppable/mineable
  * with no machine at all), not plank/block, since those are only ever produced BY a bench saw or
  * stone cutter — costing either one's own blueprint in them would make it impossible to ever build
- * the first one. mill and bot can safely cost plank/block/flour: by the time a player wants
- * either, a bench saw and stone cutter (and so a plank/block supply) already exist. bot reuses
+ * the first one. Everything downstream of those two can safely cost their output instead, since by
+ * the time a player wants it the upstream machine already exists: mill and gearPress cost
+ * plank/block; circuitBench costs plank/gear (once a gearPress is already supplying gears);
+ * coreForge costs block/circuit (once a circuitBench is already supplying circuits); toolBench
+ * costs plank alone, since a pickaxe is only ever needed later, to mine a stone deposit. bot reuses
  * BOT_TIER_COSTS.mk1 so the two costs never drift apart — upgrading a tier and building the bot in
  * the first place stay quoted the same way. */
 export const BUILDING_COSTS: Record<BuildableType, Partial<Record<ItemKind, number>>> = {
@@ -82,6 +107,10 @@ export const BUILDING_COSTS: Record<BuildableType, Partial<Record<ItemKind, numb
   benchSaw: { log: 2, stone: 2 },
   stoneCutter: { log: 2, stone: 2 },
   mill: { plank: 4, block: 1 },
+  gearPress: { plank: 2, block: 2 },
+  circuitBench: { plank: 2, gear: 2 },
+  coreForge: { block: 2, circuit: 1 },
+  toolBench: { plank: 3 },
   bot: BOT_TIER_COSTS.mk1,
 }
 
@@ -111,6 +140,22 @@ export function createStoneCutter(pos: TileRef): EntityData {
 
 export function createMill(pos: TileRef): EntityData {
   return { ...staticEntity('mill', pos), storage: {} }
+}
+
+export function createGearPress(pos: TileRef): EntityData {
+  return { ...staticEntity('gearPress', pos), storage: {} }
+}
+
+export function createCircuitBench(pos: TileRef): EntityData {
+  return { ...staticEntity('circuitBench', pos), storage: {} }
+}
+
+export function createCoreForge(pos: TileRef): EntityData {
+  return { ...staticEntity('coreForge', pos), storage: {} }
+}
+
+export function createToolBench(pos: TileRef): EntityData {
+  return { ...staticEntity('toolBench', pos), storage: {} }
 }
 
 /** A planned building or bot, placed by BUILD: occupies its tile like the finished thing would,

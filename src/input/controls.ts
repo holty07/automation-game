@@ -125,10 +125,10 @@ export function createControls(
       return
     }
 
-    const container = entitiesAt(state, tile.x, tile.y).find(
-      (entity) =>
-        entity.type === 'stockpile' || entity.type === 'benchSaw' || entity.type === 'stoneCutter' || entity.type === 'mill' || entity.type === 'blueprint',
-    )
+    // Any storage-bearing entity — stockpile, every machine, a blueprint — is a valid GIVE_TO/
+    // TAKE_FROM target. Ground items and actors never carry storage (see entities.ts's
+    // staticEntity), so this needs no per-type list that a new machine could be left off.
+    const container = entitiesAt(state, tile.x, tile.y).find((entity) => entity.storage !== null)
     if (container !== undefined) {
       const path = findPathAdjacentTo(state, player.pos, container.pos)
       if (path === null) {
