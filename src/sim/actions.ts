@@ -2,7 +2,7 @@ import { assignRoutine, copyProgram, editProgram, saveRoutine, setBotPaused, set
 import { hasStockedCost, BOT_TIER_COSTS, deductStockedCost } from './botCosts'
 import { createBotRuntime, type FailurePolicy } from './botRuntime'
 import { createGroundItem, getActionCost, GROUND_OCCUPIED, isItemKind, staticEntity } from './entities'
-import { BUILDING_COSTS, capacityFor, createBlueprint, lockedStockpileItem, recipesFor, totalStored } from './machines'
+import { BUILDING_COSTS, capacityFor, createBlueprint, lockedStockpileItem, recipeAccepting, recipeSatisfied, recipesFor, totalStored } from './machines'
 import { plant } from './planting'
 import type { BotTier, Instruction, Program } from './program'
 import type { BuildableType, Entity, EntityId, ItemKind, SimState, TileRef } from './types'
@@ -151,19 +151,29 @@ function giveTo(state: SimState, actor: Entity, targetId: EntityId): ActionResul
 
   const recipes = recipesFor(target.type)
   if (recipes !== null) {
-    const recipe = recipes[heldKind]
+    const recipe = recipeAccepting(recipes, heldKind)
     if (recipe === undefined) {
       return fail('the machine cannot use that')
     }
     if (target.craftingUntilTick !== null) {
       return fail('the machine is busy')
     }
+    const needed = recipe.inputs[heldKind] ?? 0
+    if ((target.storage[heldKind] ?? 0) >= needed) {
+      return fail('the machine already has enough of that')
+    }
     const cost = getActionCost('GIVE_TO', heldKind)
+    target.storage[heldKind] = (target.storage[heldKind] ?? 0) + 1
     actor.held = null
     actor.busyUntilTick = state.tick + cost
-    target.craftingStartedTick = state.tick
-    target.craftingUntilTick = state.tick + recipe.ticks
-    target.craftingOutput = recipe.output
+    if (recipeSatisfied(recipe, target.storage)) {
+      for (const item of Object.keys(recipe.inputs) as ItemKind[]) {
+        delete target.storage[item]
+      }
+      target.craftingStartedTick = state.tick
+      target.craftingUntilTick = state.tick + recipe.ticks
+      target.craftingOutput = recipe.output
+    }
     return { ok: true }
   }
 

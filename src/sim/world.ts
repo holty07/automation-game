@@ -2,14 +2,27 @@ import type { Entity, EntityId, ItemKind, SimState, TileRef, TileType } from './
 import { createRng } from './rng'
 import { MOVE_TICKS_PER_TILE } from './movement'
 import { createGroundItem, createRock, createStoneDeposit, createTree, staticEntity } from './entities'
-import { createBenchSaw, createMill, createStockpile, createStoneCutter } from './machines'
+import { createBenchSaw, createCircuitBench, createCoreForge, createGearPress, createMill, createStockpile, createStoneCutter, createToolBench } from './machines'
 
 const DEFAULT_TILE: TileType = 'grass'
 
 /** Entity types that occupy their tile exclusively — nothing else can walk onto or path through it.
  * Farming fixtures (soil, tilled soil, seedlings, wheat) and a growing young tree are deliberately
  * excluded — a field should be walkable, not a maze. */
-const BLOCKING_TYPES = new Set(['tree', 'rock', 'stoneDeposit', 'stockpile', 'benchSaw', 'stoneCutter', 'mill', 'blueprint'])
+const BLOCKING_TYPES = new Set([
+  'tree',
+  'rock',
+  'stoneDeposit',
+  'stockpile',
+  'benchSaw',
+  'stoneCutter',
+  'mill',
+  'gearPress',
+  'circuitBench',
+  'coreForge',
+  'toolBench',
+  'blueprint',
+])
 
 export function createWorld(width: number, height: number, seed: number): SimState {
   return {
@@ -115,6 +128,22 @@ export function addStoneCutter(state: SimState, x: number, y: number): EntityId 
 
 export function addMill(state: SimState, x: number, y: number): EntityId {
   return addEntity(state, createMill({ x, y }))
+}
+
+export function addGearPress(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, createGearPress({ x, y }))
+}
+
+export function addCircuitBench(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, createCircuitBench({ x, y }))
+}
+
+export function addCoreForge(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, createCoreForge({ x, y }))
+}
+
+export function addToolBench(state: SimState, x: number, y: number): EntityId {
+  return addEntity(state, createToolBench({ x, y }))
 }
 
 export function addBot(state: SimState, x: number, y: number): EntityId {

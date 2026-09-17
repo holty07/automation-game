@@ -10,6 +10,7 @@ import {
   addStockpile,
   addStoneCutter,
   addStoneDeposit,
+  addToolBench,
   addTree,
   createWorld,
   getEntity,
@@ -18,13 +19,23 @@ import {
 import { executeAction } from '../../src/sim/actions'
 import { BOT_TIER_COSTS } from '../../src/sim/botCosts'
 import { createSoil, createTilledSoil, createWheat, WHEAT_GROW_TICKS } from '../../src/sim/farming'
-import { BENCH_SAW_RECIPES, BUILDING_COSTS, CONTAINER_CAPACITY, MILL_RECIPES, STOCKPILE_CAPACITY, STONE_CUTTER_RECIPES, stepBlueprints } from '../../src/sim/machines'
+import {
+  BENCH_SAW_RECIPES,
+  BUILDING_COSTS,
+  CONTAINER_CAPACITY,
+  MILL_RECIPES,
+  STOCKPILE_CAPACITY,
+  STONE_CUTTER_RECIPES,
+  TOOL_BENCH_RECIPES,
+  recipeAccepting,
+  stepBlueprints,
+} from '../../src/sim/machines'
 import { stepHarvests } from '../../src/sim/useVerb'
 import { createBotRuntime } from '../../src/sim/vm'
 import type { Instruction, Program } from '../../src/sim/program'
 import type { EntityId, SimState } from '../../src/sim/types'
 
-const PLANK_RECIPE = BENCH_SAW_RECIPES.log
+const PLANK_RECIPE = recipeAccepting(BENCH_SAW_RECIPES, 'log')
 if (PLANK_RECIPE === undefined) {
   throw new Error('expected recipe missing')
 }
@@ -591,27 +602,71 @@ describe('executeAction', () => {
       expect(getEntity(state, benchSawId)?.craftingOutput).toBe('plank')
     })
 
-    it('feeds a plank into a bench saw, starting the pickaxe recipe', () => {
+    it('holds a plank delivered to a tool bench without starting the pickaxe recipe until a block follows', () => {
       const state = createWorld(5, 5, 1)
       const playerId = addPlayer(state, 1, 1)
-      const benchSawId = addBenchSaw(state, 2, 1)
+      const toolBenchId = addToolBench(state, 2, 1)
       const player = getEntity(state, playerId)
       if (player === undefined) {
         throw new Error('player missing')
       }
       player.held = 'plank'
-      const pickaxeRecipe = BENCH_SAW_RECIPES.plank
+
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: toolBenchId })
+
+      expect(result.ok).toBe(true)
+      expect(player.held).toBeNull()
+      expect(getEntity(state, toolBenchId)?.storage).toEqual({ plank: 1 })
+      expect(getEntity(state, toolBenchId)?.craftingUntilTick).toBeNull()
+    })
+
+    it('rejects a second plank delivered to a tool bench that already has the one it needs', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const toolBenchId = addToolBench(state, 2, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      player.held = 'plank'
+      expect(executeAction(state, playerId, { op: 'GIVE_TO', target: toolBenchId }).ok).toBe(true)
+
+      player.held = 'plank'
+      player.busyUntilTick = state.tick
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: toolBenchId })
+
+      expect(result).toEqual({ ok: false, reason: 'the machine already has enough of that' })
+      expect(player.held).toBe('plank')
+    })
+
+    it('feeds a plank then a block into a tool bench, starting the pickaxe recipe only once both are in', () => {
+      const state = createWorld(5, 5, 1)
+      const playerId = addPlayer(state, 1, 1)
+      const toolBenchId = addToolBench(state, 2, 1)
+      const player = getEntity(state, playerId)
+      if (player === undefined) {
+        throw new Error('player missing')
+      }
+      const pickaxeRecipe = recipeAccepting(TOOL_BENCH_RECIPES, 'plank')
       if (pickaxeRecipe === undefined) {
         throw new Error('expected recipe missing')
       }
 
-      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: benchSawId })
+      player.held = 'plank'
+      expect(executeAction(state, playerId, { op: 'GIVE_TO', target: toolBenchId }).ok).toBe(true)
+      expect(getEntity(state, toolBenchId)?.craftingUntilTick).toBeNull()
+
+      player.held = 'block'
+      player.busyUntilTick = state.tick
+      const startTick = state.tick
+      const result = executeAction(state, playerId, { op: 'GIVE_TO', target: toolBenchId })
 
       expect(result.ok).toBe(true)
       expect(player.held).toBeNull()
-      expect(getEntity(state, benchSawId)?.craftingStartedTick).toBe(state.tick)
-      expect(getEntity(state, benchSawId)?.craftingUntilTick).toBe(state.tick + pickaxeRecipe.ticks)
-      expect(getEntity(state, benchSawId)?.craftingOutput).toBe('pickaxe')
+      expect(getEntity(state, toolBenchId)?.storage).toEqual({})
+      expect(getEntity(state, toolBenchId)?.craftingStartedTick).toBe(startTick)
+      expect(getEntity(state, toolBenchId)?.craftingUntilTick).toBe(startTick + pickaxeRecipe.ticks)
+      expect(getEntity(state, toolBenchId)?.craftingOutput).toBe('pickaxe')
     })
 
     it('feeds grain into a mill, starting its recipe', () => {
@@ -623,7 +678,7 @@ describe('executeAction', () => {
         throw new Error('player missing')
       }
       player.held = 'grain'
-      const flourRecipe = MILL_RECIPES.grain
+      const flourRecipe = recipeAccepting(MILL_RECIPES, 'grain')
       if (flourRecipe === undefined) {
         throw new Error('expected recipe missing')
       }
@@ -756,7 +811,7 @@ describe('executeAction', () => {
         throw new Error('player missing')
       }
       player.held = 'stone'
-      const blockRecipe = STONE_CUTTER_RECIPES.stone
+      const blockRecipe = recipeAccepting(STONE_CUTTER_RECIPES, 'stone')
       if (blockRecipe === undefined) {
         throw new Error('expected recipe missing')
       }

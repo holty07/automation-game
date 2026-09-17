@@ -1,5 +1,6 @@
 import { getTile } from '../sim/world'
 import { ITEM_KINDS } from '../sim/entities'
+import { recipesFor } from '../sim/machines'
 import type { SimState, TileType } from '../sim/types'
 
 function tileChar(tile: TileType): string {
@@ -47,7 +48,7 @@ export function textDump(state: SimState): string {
           .join(',')
         extra += ` storage=${contents === '' ? 'empty' : contents}`
       }
-      if (entity.type === 'benchSaw' || entity.type === 'stoneCutter' || entity.type === 'mill') {
+      if (recipesFor(entity.type) !== null) {
         extra +=
           entity.craftingUntilTick === null
             ? ' crafting=idle'

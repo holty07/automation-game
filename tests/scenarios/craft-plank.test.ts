@@ -4,11 +4,11 @@ import { load } from '../../src/sim/serialise'
 import { tick } from '../../src/sim/tick'
 import { executeAction } from '../../src/sim/actions'
 import { getEntity } from '../../src/sim/world'
-import { BENCH_SAW_RECIPES } from '../../src/sim/machines'
+import { BENCH_SAW_RECIPES, recipeAccepting } from '../../src/sim/machines'
 import { textDump } from '../../src/debug/textDump'
 import type { SimState } from '../../src/sim/types'
 
-const PLANK_RECIPE = BENCH_SAW_RECIPES.log
+const PLANK_RECIPE = recipeAccepting(BENCH_SAW_RECIPES, 'log')
 if (PLANK_RECIPE === undefined) {
   throw new Error('expected recipe missing')
 }
